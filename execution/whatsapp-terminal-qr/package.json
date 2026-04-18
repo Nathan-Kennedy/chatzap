@@ -1,0 +1,19 @@
+{
+  "name": "whatsapp-terminal-qr",
+  "private": true,
+  "type": "module",
+  "description": "Pareamento WhatsApp via QR no terminal (Baileys), sem Docker.",
+  "scripts": {
+    "pair": "node pair.mjs",
+    "clean": "node clean.mjs",
+    "test:deps": "node -e \"import('@whiskeysockets/baileys').then(()=>console.log('OK: Baileys carrega'))\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.21",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

@@ -1,0 +1,4 @@
+# Perfis: não commitar áudio nem meta gerado (mantém só README e *.example).
+*/ref_audio.wav
+*/ref_audio_backup*.wav
+*/meta.json

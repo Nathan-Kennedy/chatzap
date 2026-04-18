@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: #0A0A0F;
+    --foreground: #F1F5F9;
+    --border: #ffffff0f;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-[#ffffff0f];
+  }
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/30;
+  }
+}

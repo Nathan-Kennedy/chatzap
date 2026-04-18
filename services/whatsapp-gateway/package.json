@@ -1,0 +1,25 @@
+{
+  "name": "@chatbot/whatsapp-gateway",
+  "private": true,
+  "type": "module",
+  "description": "WhatsApp via Baileys: QR no terminal, Postgres + Redis para plataforma.",
+  "scripts": {
+    "pair": "node src/cli-pair.js",
+    "clean": "node src/clean.js",
+    "serve": "node src/server.js",
+    "start": "node src/server.js",
+    "test:deps": "node -e \"import('pg');import('ioredis');import('@whiskeysockets/baileys').then(()=>console.log('OK'))\""
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.21",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "ioredis": "^5.4.2",
+    "pg": "^8.13.1",
+    "pino": "^9.6.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

@@ -1,0 +1,44 @@
+# Apenas Postgres + Redis (sem Evolution, sem API). Útil para dev local sem "Docker em tudo".
+#
+#   docker compose -f infra/docker-compose.deps.yml up -d
+#
+# Depois: aplicar scripts/apply-wa-gateway-sql.ps1 se precisares das tabelas wa_*.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wa-saas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wa_saas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wa_saas_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-wa_saas}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - wa_saas_pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wa_saas} -d ${POSTGRES_DB:-wa_saas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: wa-saas-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - wa_saas_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  wa_saas_pgdata:
+  wa_saas_redisdata:

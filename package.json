@@ -1,0 +1,27 @@
+{
+  "name": "chatbot",
+  "private": true,
+  "description": "Scripts de desenvolvimento local (API + web + opcional gateway). Requer Node e Go no PATH.",
+  "scripts": {
+    "docker:deps": "node scripts/docker-compose-exec.js infra/docker-compose.deps.yml up -d",
+    "docker:dev": "node scripts/docker-compose-exec.js infra/docker-compose.dev.yml up -d",
+    "docker:dev:stack": "node scripts/docker-compose-exec.js infra/docker-compose.dev.yml up -d",
+    "docker:dev:api": "node scripts/docker-compose-exec.js infra/docker-compose.dev.yml --profile api up -d --build",
+    "docker:dev:api:rebuild": "node scripts/docker-compose-exec.js infra/docker-compose.dev.yml --profile api build --no-cache api && node scripts/docker-compose-exec.js infra/docker-compose.dev.yml --profile api up -d --force-recreate api",
+    "docker:down": "node scripts/docker-compose-exec.js infra/docker-compose.deps.yml down",
+    "docker:dev:down": "node scripts/docker-compose-exec.js infra/docker-compose.dev.yml down",
+    "dev:stack": "concurrently -n api,web \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:stack:whatsapp": "node scripts/docker-compose-exec.js infra/docker-compose.dev.yml up -d && concurrently -n api,web \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:stack:gw": "concurrently -n api,web,gw \"npm run dev:api\" \"npm run dev:web\" \"npm run dev:gw\"",
+    "dev:api": "cd backend && go run ./cmd/api",
+    "dev:web": "cd apps/web && npm run dev",
+    "dev:gw": "cd services/whatsapp-gateway && node src/server.js",
+    "wait:inbound": "cd backend && go run ./cmd/waitinbound",
+    "omnivoice:server": "powershell -ExecutionPolicy Bypass -File scripts/run-omnivoice-server.ps1",
+    "kokoro:server": "powershell -ExecutionPolicy Bypass -File scripts/run-kokoro-server.ps1",
+    "tts:local": "concurrently -n omnivoice,kokoro \"npm run omnivoice:server\" \"npm run kokoro:server\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

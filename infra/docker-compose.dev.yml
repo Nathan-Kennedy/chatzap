@@ -1,0 +1,146 @@
+# Stack local: Postgres + Redis + Evolution API (WhatsApp) + opcional wa-gateway (Baileys).
+#
+# Subir tudo (Postgres + Redis + Evolution), sem API no Docker — uso típico com npm run dev:stack:
+#   npm run docker:dev
+#   npm run docker:dev:stack   (alias do mesmo comando)
+#
+# API Go no Docker (opcional; requer backend/.env):
+#   docker compose -f infra/docker-compose.dev.yml --profile api up -d --build
+# Após mudanças no código Go, na raiz do repo:
+#   npm run docker:dev:api:rebuild
+#   (rebuild --no-cache do serviço api + recria o contentor)
+#
+# Variáveis opcionais: ficheiro infra/.env (ver infra/.env.example) ou export no shell.
+#
+# Mensagens RECEBIDAS dependem do webhook Evolution → API:
+# - API com `go run` no Windows/Mac: no backend/.env use PUBLIC_WEBHOOK_BASE_URL=http://host.docker.internal:<HTTP_PORT>
+#   (o serviço evolution tem extra_hosts para host.docker.internal também em Linux).
+# - API no Docker (perfil api): por defeito PUBLIC_WEBHOOK_BASE_URL=http://api:8080 (rede interna compose).
+#   Depois de subir, na app: Instâncias → sincronizar webhook (re-regista o URL na Evolution).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wa-saas-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wa_saas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wa_saas_dev_change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-wa_saas}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - wa_saas_pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wa_saas} -d ${POSTGRES_DB:-wa_saas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: wa-saas-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - wa_saas_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Evolution Go — documentação: https://docs.evolutionfoundation.com.br/en/evolution-go/installation
+  evolution:
+    image: evoapicloud/evolution-go:latest
+    container_name: wa-saas-evolution
+    restart: unless-stopped
+    ports:
+      - "${EVOLUTION_HTTP_PORT:-8081}:8080"
+    # Permite POST do contentor para a API no host (PUBLIC_WEBHOOK_BASE_URL=host.docker.internal:...).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # DNS público: ajuda o Baileys a resolver domínios do WhatsApp (alguns ambientes Windows/Docker).
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    environment:
+      SERVER_PORT: "8080"
+      CLIENT_NAME: ${EVOLUTION_CLIENT_NAME:-wa_saas}
+      GLOBAL_API_KEY: ${EVOLUTION_AUTH_API_KEY:-wa_saas_evolution_dev_key_change_me}
+      POSTGRES_AUTH_DB: postgresql://${POSTGRES_USER:-wa_saas}:${POSTGRES_PASSWORD:-wa_saas_dev_change_me}@postgres:5432/${EVOLUTION_AUTH_DB_NAME:-evogo_auth}?sslmode=disable
+      POSTGRES_USERS_DB: postgresql://${POSTGRES_USER:-wa_saas}:${POSTGRES_PASSWORD:-wa_saas_dev_change_me}@postgres:5432/${EVOLUTION_USERS_DB_NAME:-evogo_users}?sslmode=disable
+      DATABASE_SAVE_MESSAGES: "${EVOLUTION_DATABASE_SAVE_MESSAGES:-false}"
+      WADEBUG: ${EVOLUTION_WADEBUG:-INFO}
+      LOGTYPE: ${EVOLUTION_LOGTYPE:-console}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Gateway WhatsApp (Baileys): health HTTP + registo em Postgres/Redis. Pareamento: ver services/whatsapp-gateway/README.md
+  wa-gateway:
+    profiles: ["gateway"]
+    build:
+      context: ../services/whatsapp-gateway
+      dockerfile: Dockerfile
+    container_name: wa-saas-wa-gateway
+    restart: unless-stopped
+    ports:
+      - "${WA_GATEWAY_HTTP_PORT:-3090}:3090"
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-wa_saas}:${POSTGRES_PASSWORD:-wa_saas_dev_change_me}@postgres:5432/${POSTGRES_DB:-wa_saas}?sslmode=disable
+      REDIS_URL: redis://redis:6379/2
+      WA_AUTH_DIR: /data/auth
+      WA_INSTANCE_NAME: ${WA_INSTANCE_NAME:-default}
+      WA_GATEWAY_HTTP_PORT: "3090"
+      WA_REDIS_CHANNEL_PREFIX: wa:gw
+      LOG_LEVEL: warn
+    volumes:
+      - wa_saas_wa_gateway_auth:/data/auth
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  api:
+    profiles: ["api"]
+    image: wa-saas-api:dev
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: wa-saas-api
+    restart: unless-stopped
+    ports:
+      - "${API_HTTP_PORT:-8080}:8080"
+    env_file:
+      - ../backend/.env
+    environment:
+      # Sobrepõe URLs locais do .env para nomes de serviço Docker
+      # HTTP_PORT dentro do contentor tem de ser 8080 (igual ao mapeamento ports e ao EXPOSE do Dockerfile).
+      HTTP_PORT: "8080"
+      DATABASE_URL: postgres://${POSTGRES_USER:-wa_saas}:${POSTGRES_PASSWORD:-wa_saas_dev_change_me}@postgres:5432/${POSTGRES_DB:-wa_saas}?sslmode=disable
+      REDIS_URL: redis://redis:6379/0
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-evolution}
+      EVOLUTION_BASE_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_AUTH_API_KEY:-wa_saas_evolution_dev_key_change_me}
+      EVOLUTION_WEBHOOK_API_KEY: ${EVOLUTION_AUTH_API_KEY:-wa_saas_evolution_dev_key_change_me}
+      # Evolution (contentor) → API (contentor); sobrepõe host.docker.internal do .env local.
+      PUBLIC_WEBHOOK_BASE_URL: ${PUBLIC_WEBHOOK_BASE_URL:-http://api:8080}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      evolution:
+        condition: service_started
+
+volumes:
+  wa_saas_pgdata:
+  wa_saas_redisdata:
+  wa_saas_wa_gateway_auth:

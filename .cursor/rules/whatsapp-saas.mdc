@@ -1,0 +1,19 @@
+---
+description: Contexto WhatsApp AI SaaS — alinhar código ao playbook e às skills
+globs:
+alwaysApply: true
+---
+
+# Projeto ChatBot / WhatsApp SaaS
+
+- Fonte de verdade arquitetural: `docs/saas-whatsapp-playbook.md` e `docs/PLANEJAMENTO.md`.
+- Instruções de orquestração: `AGENTS.md` (directives + execution quando existirem).
+- Skills reutilizáveis para segurança e convenções: pasta `skills/` (anexe `@skills/...` quando focado em front, back ou review).
+
+## Regras rápidas
+
+- Backend Go: validar `workspace_id` e RBAC em todo request; API sob `/api/v1`; webhooks com HMAC.
+- Frontend (`apps/web`): TanStack Query para servidor; Zod + RHF em forms; proibir bypass de auth (`fake-token`) fora de `VITE_ENABLE_AUTH_MOCK`.
+- Nunca commitar `.env` nem secrets; usar `.env.example`.
+
+Para detalhes, leia `docs/PLANEJAMENTO.md` e os arquivos em `skills/`.
