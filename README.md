@@ -1,4 +1,4 @@
-# ChatBot — monorepo WhatsApp SaaS (UI + docs)
+# chatzap — monorepo WhatsApp SaaS (UI + docs)
 
 Frontend **React + Vite + TypeScript** para o dashboard descrito no playbook. Backend **Go 1.22+ / Fiber** em `backend/`.
 
