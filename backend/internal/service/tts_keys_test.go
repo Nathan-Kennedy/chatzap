@@ -11,6 +11,7 @@ func TestNormalizeTTSProvider(t *testing.T) {
 		{"none", TTSProviderNone},
 		{"NONE", TTSProviderNone},
 		{"openai_tts", TTSProviderOpenAI},
+		{"gemini_tts", TTSProviderGemini},
 		{"omnivoice", TTSProviderOmnivoice},
 		{"elevenlabs", TTSProviderElevenLabs},
 		{"kokoro", TTSProviderKokoro},

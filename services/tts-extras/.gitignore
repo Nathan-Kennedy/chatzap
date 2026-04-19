@@ -1,0 +1,9 @@
+vendor/
+venvs/
+hf-cache/
+pretrained_models/
+checkpoints/
+**/__pycache__/
+*.pyc
+*.egg-info/
+.eggs/

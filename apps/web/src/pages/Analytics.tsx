@@ -11,27 +11,29 @@ import {
   BarChart,
   Bar,
 } from 'recharts'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-
-const lineData = [
-  { day: 'Seg', abertas: 12, resolvidas: 8 },
-  { day: 'Ter', abertas: 19, resolvidas: 14 },
-  { day: 'Qua', abertas: 15, resolvidas: 15 },
-  { day: 'Qui', abertas: 22, resolvidas: 18 },
-  { day: 'Sex', abertas: 18, resolvidas: 20 },
-]
-
-const barData = [
-  { h: '9h', vol: 40 },
-  { h: '12h', vol: 85 },
-  { h: '15h', vol: 55 },
-  { h: '18h', vol: 70 },
-]
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 type Overview = {
   messages_last_30d: number
   conversations_total: number
   instances_total: number
+}
+
+type TimeseriesDay = {
+  date: string
+  inbound: number
+  outbound: number
+}
+
+type TimeseriesHour = {
+  hour: number
+  messages: number
+}
+
+type TimeseriesPayload = {
+  by_day: TimeseriesDay[]
+  by_hour: TimeseriesHour[]
+  note?: string
 }
 
 async function fetchOverview(): Promise<Overview> {
@@ -40,11 +42,41 @@ async function fetchOverview(): Promise<Overview> {
   return data
 }
 
+async function fetchTimeseries(): Promise<TimeseriesPayload> {
+  const res = await api.get<unknown>('/analytics/timeseries')
+  const { data } = unwrapEnvelope<TimeseriesPayload>(res)
+  return data
+}
+
+function shortDayLabel(isoDate: string): string {
+  const d = new Date(`${isoDate}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return isoDate
+  return d.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })
+}
+
 export default function Analytics() {
   const { data: overview } = useQuery({
     queryKey: ['analytics', 'overview'],
     queryFn: fetchOverview,
   })
+
+  const { data: ts } = useQuery({
+    queryKey: ['analytics', 'timeseries'],
+    queryFn: fetchTimeseries,
+  })
+
+  const lineData =
+    ts?.by_day?.map((r) => ({
+      day: shortDayLabel(r.date),
+      recebidas: Number(r.inbound),
+      enviadas: Number(r.outbound),
+    })) ?? []
+
+  const barData =
+    ts?.by_hour?.map((r) => ({
+      h: `${r.hour}h`,
+      vol: Number(r.messages),
+    })) ?? []
 
   return (
     <div className="p-6 h-full overflow-auto space-y-6">
@@ -75,13 +107,46 @@ export default function Analytics() {
       <div className="grid lg:grid-cols-2 gap-6">
         <Card className="bg-card border-border">
           <CardHeader>
-            <CardTitle className="text-base">Abertas vs resolvidas</CardTitle>
+            <CardTitle className="text-base">Mensagens por dia</CardTitle>
+            <CardDescription className="text-xs">
+              Recebidas (inbound) vs enviadas (outbound), UTC — dias com actividade apenas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="h-[260px]">
+            {lineData.length === 0 ? (
+              <p className="text-sm text-text-muted py-8 text-center">Sem dados no período.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={lineData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="day" className="text-xs" />
+                  <YAxis className="text-xs" />
+                  <Tooltip
+                    contentStyle={{
+                      background: '#15151F',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  />
+                  <Line type="monotone" dataKey="recebidas" stroke="#7C3AED" name="Recebidas" />
+                  <Line type="monotone" dataKey="enviadas" stroke="#10B981" name="Enviadas" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="text-base">Volume por hora do dia</CardTitle>
+            <CardDescription className="text-xs">
+              Total de mensagens por hora (0–23 UTC), agregado nos últimos 30 dias.
+            </CardDescription>
           </CardHeader>
           <CardContent className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={lineData}>
+              <BarChart data={barData}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="day" className="text-xs" />
+                <XAxis dataKey="h" interval={2} className="text-xs" />
                 <YAxis className="text-xs" />
                 <Tooltip
                   contentStyle={{
@@ -89,30 +154,7 @@ export default function Analytics() {
                     border: '1px solid rgba(255,255,255,0.08)',
                   }}
                 />
-                <Line type="monotone" dataKey="abertas" stroke="#7C3AED" name="Abertas" />
-                <Line type="monotone" dataKey="resolvidas" stroke="#10B981" name="Resolvidas" />
-              </LineChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle className="text-base">Volume por horário</CardTitle>
-          </CardHeader>
-          <CardContent className="h-[260px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={barData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                <XAxis dataKey="h" />
-                <YAxis />
-                <Tooltip
-                  contentStyle={{
-                    background: '#15151F',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                  }}
-                />
-                <Bar dataKey="vol" fill="#06B6D4" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="vol" fill="#06B6D4" radius={[4, 4, 0, 0]} name="Mensagens" />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>

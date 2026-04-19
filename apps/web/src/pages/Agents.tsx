@@ -39,22 +39,18 @@ const CUSTOM_MODEL = '__custom__'
 const VOICE_CUSTOM = '__custom_voice__'
 
 /** Valores de `tts_provider` alinhados ao backend */
-type TTSProviderValue = 'none' | 'openai_tts' | 'omnivoice' | 'elevenlabs' | 'kokoro'
+type TTSProviderValue = 'none' | 'openai_tts' | 'gemini_tts' | 'omnivoice' | 'elevenlabs' | 'kokoro'
 
-const OPENAI_TTS_VOICES: { value: string; label: string }[] = [
-  { value: 'coral', label: 'Coral' },
-  { value: 'nova', label: 'Nova' },
-  { value: 'shimmer', label: 'Shimmer' },
-  { value: 'sage', label: 'Sage' },
-  { value: 'marin', label: 'Marin' },
-  { value: 'cedar', label: 'Cedar' },
-  { value: 'alloy', label: 'Alloy' },
-  { value: 'ash', label: 'Ash' },
-  { value: 'ballad', label: 'Ballad' },
-  { value: 'echo', label: 'Echo' },
-  { value: 'fable', label: 'Fable' },
-  { value: 'onyx', label: 'Onyx' },
-  { value: 'verse', label: 'Verse' },
+/** Vozes pré-definidas Gemini TTS (Google AI Speech); alinhado a `scripts/generate-voice-samples-paid.py`. */
+const GEMINI_TTS_VOICES: { value: string; label: string }[] = [
+  { value: 'Kore', label: 'Kore' },
+  { value: 'Aoede', label: 'Aoede' },
+  { value: 'Leda', label: 'Leda' },
+  { value: 'Zephyr', label: 'Zephyr' },
+  { value: 'Puck', label: 'Puck' },
+  { value: 'Charon', label: 'Charon' },
+  { value: 'Fenrir', label: 'Fenrir' },
+  { value: 'Orus', label: 'Orus' },
 ]
 
 /** Vozes femininas curadas (IDs públicos; podem mudar na conta ElevenLabs) */
@@ -66,14 +62,17 @@ const ELEVENLABS_FEMALE_VOICES: { value: string; label: string }[] = [
   { value: 'XB0fDUnXU5powFXDhCwa', label: 'Charlotte' },
 ]
 
+/** Vozes com `lang_code='p'` (pt-br) no Kokoro-82M — ver VOICES.md upstream. */
 const KOKORO_VOICE_PRESETS: { value: string; label: string }[] = [
   { value: 'pf_dora', label: 'PT-BR feminina (pf_dora)' },
-  { value: 'af_heart', label: 'US feminina (af_heart)' },
-  { value: 'bf_emma', label: 'bf_emma' },
+  { value: 'pm_alex', label: 'PT-BR masculina (pm_alex)' },
+  { value: 'pm_santa', label: 'PT-BR masculina (pm_santa)' },
 ]
 
 function defaultVoiceForTTSProvider(p: TTSProviderValue): string {
   switch (p) {
+    case 'gemini_tts':
+      return 'Kore'
     case 'openai_tts':
       return 'coral'
     case 'omnivoice':
@@ -89,6 +88,8 @@ function defaultVoiceForTTSProvider(p: TTSProviderValue): string {
 
 function ttsProviderBadgeLabel(tts: string): string {
   switch (tts) {
+    case 'gemini_tts':
+      return 'Gemini TTS'
     case 'openai_tts':
       return 'OpenAI TTS'
     case 'omnivoice':
@@ -126,6 +127,8 @@ export type AgentRow = {
   openai_tts_model: string
   has_openai_tts_api_key: boolean
   openai_tts_api_key_last4: string
+  has_gemini_tts_api_key?: boolean
+  gemini_tts_api_key_last4?: string
   omnivoice_base_url: string
   kokoro_base_url: string
   has_elevenlabs_api_key: boolean
@@ -148,10 +151,11 @@ const formSchema = z
     active: z.boolean(),
     use_for_whatsapp_auto_reply: z.boolean(),
     voice_reply_enabled: z.boolean(),
-    tts_provider: z.enum(['none', 'openai_tts', 'omnivoice', 'elevenlabs', 'kokoro']),
+    tts_provider: z.enum(['none', 'openai_tts', 'gemini_tts', 'omnivoice', 'elevenlabs', 'kokoro']),
     openai_tts_voice: z.string().min(1, 'Indica a voz').max(128),
     openai_tts_model: z.string().max(128),
     openai_tts_api_key: z.string(),
+    gemini_tts_api_key: z.string(),
     omnivoice_base_url: z.string(),
     kokoro_base_url: z.string(),
     elevenlabs_api_key: z.string(),
@@ -308,7 +312,7 @@ function AgentVoicePreviewBlock({
         <p className="text-xs text-muted-foreground">
           {loadError
             ? 'Não foi possível carregar a amostra.'
-            : 'Ainda sem amostra. Grava com TTS ativo e o provedor (OpenAI, OmniVoice, ElevenLabs ou Kokoro) acessível para gerar o ficheiro.'}
+            : 'Ainda sem amostra. Grava com TTS ativo e o provedor (OpenAI, ElevenLabs ou Kokoro) acessível para gerar o ficheiro.'}
         </p>
       )}
       {!isCreate && (
@@ -336,6 +340,7 @@ export default function Agents() {
   const [testReply, setTestReply] = useState<string | null>(null)
   const [keyHint, setKeyHint] = useState<string | null>(null)
   const [ttsKeyHint, setTtsKeyHint] = useState<string | null>(null)
+  const [geminiTtsKeyHint, setGeminiTtsKeyHint] = useState<string | null>(null)
   const [elKeyHint, setElKeyHint] = useState<string | null>(null)
 
   const isCreate = editing === null
@@ -357,6 +362,7 @@ export default function Agents() {
       openai_tts_voice: 'nova',
       openai_tts_model: '',
       openai_tts_api_key: '',
+      gemini_tts_api_key: '',
       omnivoice_base_url: '',
       kokoro_base_url: '',
       elevenlabs_api_key: '',
@@ -386,24 +392,26 @@ export default function Agents() {
         openai_tts_voice: 'nova',
         openai_tts_model: '',
         openai_tts_api_key: '',
+        gemini_tts_api_key: '',
         omnivoice_base_url: '',
         kokoro_base_url: '',
         elevenlabs_api_key: '',
       })
       setKeyHint(null)
       setTtsKeyHint(null)
+      setGeminiTtsKeyHint(null)
       setElKeyHint(null)
       return
     }
     const { preset, custom } = resolveModelPreset(editing.model, editing.provider as 'gemini' | 'openai')
     const voiceOn = editing.voice_reply_enabled ?? false
-    const allowedTts: TTSProviderValue[] = ['none', 'openai_tts', 'omnivoice', 'elevenlabs', 'kokoro']
+    const allowedTts: TTSProviderValue[] = ['none', 'openai_tts', 'gemini_tts', 'omnivoice', 'elevenlabs', 'kokoro']
     let tts = (editing.tts_provider || 'none') as TTSProviderValue
     if (!allowedTts.includes(tts)) {
-      tts = 'openai_tts'
+      tts = 'none'
     }
     if (voiceOn && tts === 'none') {
-      tts = 'openai_tts'
+      tts = 'gemini_tts'
     }
     form.reset({
       name: editing.name,
@@ -423,12 +431,14 @@ export default function Agents() {
           : defaultVoiceForTTSProvider(voiceOn ? tts : 'none'),
       openai_tts_model: editing.openai_tts_model?.trim() ?? '',
       openai_tts_api_key: '',
+      gemini_tts_api_key: '',
       omnivoice_base_url: editing.omnivoice_base_url ?? '',
       kokoro_base_url: editing.kokoro_base_url ?? '',
       elevenlabs_api_key: '',
     })
     setKeyHint(null)
     setTtsKeyHint(null)
+    setGeminiTtsKeyHint(null)
     setElKeyHint(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset só quando abre/fecha ou muda edição
   }, [formOpen, isCreate, editing])
@@ -459,6 +469,7 @@ export default function Agents() {
         openai_tts_voice: values.openai_tts_voice.trim(),
         openai_tts_model: values.openai_tts_model.trim(),
         openai_tts_api_key: values.openai_tts_api_key.trim(),
+        gemini_tts_api_key: values.gemini_tts_api_key.trim(),
         omnivoice_base_url: values.omnivoice_base_url.trim(),
         kokoro_base_url: values.kokoro_base_url.trim(),
         elevenlabs_api_key: values.elevenlabs_api_key.trim(),
@@ -509,6 +520,9 @@ export default function Agents() {
       }
       if (values.openai_tts_api_key.trim()) {
         body.openai_tts_api_key = values.openai_tts_api_key.trim()
+      }
+      if (values.gemini_tts_api_key.trim()) {
+        body.gemini_tts_api_key = values.gemini_tts_api_key.trim()
       }
       if (values.elevenlabs_api_key.trim()) {
         body.elevenlabs_api_key = values.elevenlabs_api_key.trim()
@@ -797,10 +811,10 @@ export default function Agents() {
               </p>
               <ul className="text-xs text-text-muted list-disc pl-4 space-y-1">
                 <li>
-                  <strong className="font-medium text-text-primary">OmniVoice:</strong>{' '}
-                  <code className="text-[10px]">npm run omnivoice:server</code> (porta 8000);{' '}
-                  <code className="text-[10px]">OMNIVOICE_DEFAULT_BASE_URL</code> ou URL no agente; em Docker use{' '}
-                  <code className="text-[10px]">http://host.docker.internal:8000</code>
+                  <strong className="font-medium text-text-primary">Gemini TTS (cloud):</strong>{' '}
+                  chave Google (mesma do LLM ou <code className="text-[10px]">gemini_tts_api_key</code> /{' '}
+                  <code className="text-[10px]">GEMINI_API_KEY</code> no servidor). Quota/rate limit: espaçamento
+                  extra entre segmentos longos.
                 </li>
                 <li>
                   <strong className="font-medium text-text-primary">Kokoro (local):</strong>{' '}
@@ -823,8 +837,8 @@ export default function Agents() {
                         if (!v) {
                           form.setValue('tts_provider', 'none')
                         } else if (form.getValues('tts_provider') === 'none') {
-                          form.setValue('tts_provider', 'omnivoice')
-                          form.setValue('openai_tts_voice', defaultVoiceForTTSProvider('omnivoice'))
+                          form.setValue('tts_provider', 'gemini_tts')
+                          form.setValue('openai_tts_voice', defaultVoiceForTTSProvider('gemini_tts'))
                         }
                       }}
                       id="ag-voice"
@@ -852,24 +866,36 @@ export default function Agents() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="openai_tts">OpenAI TTS (cloud)</SelectItem>
-                            <SelectItem value="omnivoice">OmniVoice (local)</SelectItem>
+                            <SelectItem value="gemini_tts">Gemini TTS (cloud, voz natural)</SelectItem>
                             <SelectItem value="elevenlabs">ElevenLabs (cloud, pago por carácter)</SelectItem>
                             <SelectItem value="kokoro">Kokoro (local, API compatível OpenAI)</SelectItem>
+                            {field.value === 'openai_tts' ? (
+                              <SelectItem value="openai_tts">OpenAI TTS (legado — migrar para Gemini TTS)</SelectItem>
+                            ) : null}
+                            {field.value === 'omnivoice' ? (
+                              <SelectItem value="omnivoice">OmniVoice (legado — já não listado; migrar para Kokoro)</SelectItem>
+                            ) : null}
                           </SelectContent>
                         </Select>
                       )}
                     />
                   </div>
-                  {ttsProvider === 'openai_tts' && (
+                  {ttsProvider === 'gemini_tts' && (
                     <>
+                      <p className="text-xs text-text-muted">
+                        Voz em cloud com etiquetas de ritmo (<code className="text-[10px]">[PAUSA]</code>,{' '}
+                        <code className="text-[10px]">[HESITA]</code>, <code className="text-[10px]">[GAGUEJA]</code>) quando
+                        estiverem no texto — estilo natural de nota de voz no WhatsApp. O modelo de leitura segue o
+                        preset do servidor (<code className="text-[10px]">GEMINI_TTS_INSTRUCTION</code>) ou o texto
+                        padrão.
+                      </p>
                       <div className="space-y-2">
-                        <Label>Voz</Label>
+                        <Label>Voz Gemini</Label>
                         <Controller
                           control={form.control}
                           name="openai_tts_voice"
                           render={({ field }) => {
-                            const hasPreset = OPENAI_TTS_VOICES.some((o) => o.value === field.value)
+                            const hasPreset = GEMINI_TTS_VOICES.some((o) => o.value === field.value)
                             return (
                               <Select value={field.value} onValueChange={field.onChange}>
                                 <SelectTrigger className="bg-background">
@@ -879,9 +905,9 @@ export default function Agents() {
                                   {!hasPreset && field.value ? (
                                     <SelectItem value={field.value}>Guardado: {field.value}</SelectItem>
                                   ) : null}
-                                  {OPENAI_TTS_VOICES.map((o) => (
+                                  {GEMINI_TTS_VOICES.map((o) => (
                                     <SelectItem key={o.value} value={o.value}>
-                                      {o.label} ({o.value})
+                                      {o.label}
                                     </SelectItem>
                                   ))}
                                 </SelectContent>
@@ -891,55 +917,58 @@ export default function Agents() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="ag-openai-tts-model">Modelo TTS OpenAI (opcional)</Label>
+                        <Label htmlFor="ag-gemini-tts-model">Modelo TTS Gemini (opcional)</Label>
                         <Input
-                          id="ag-openai-tts-model"
+                          id="ag-gemini-tts-model"
                           className="bg-background"
-                          placeholder="vazio = defeito do servidor (ex. gpt-4o-mini-tts)"
+                          placeholder="vazio = gemini-2.5-flash-preview-tts (ou GEMINI_TTS_MODEL no servidor)"
                           {...form.register('openai_tts_model')}
                         />
-                        <p className="text-xs text-text-muted">
-                          Opcional: sobrepõe <code className="text-[10px]">OPENAI_TTS_MODEL</code> no servidor para este agente.
-                        </p>
                       </div>
-                      {provider === 'openai' ? (
+                      {provider === 'gemini' ? (
                         <p className="text-xs text-text-muted">
-                          Usa a mesma API key do agente (OpenAI) para sintetizar voz, a menos que cries uma chave
-                          dedicada abaixo.
+                          Por defeito usa a mesma API key do LLM (Gemini). Opcional: chave Google só para voz (projeto
+                          ou quota separados).
                         </p>
-                      ) : null}
-                      {(provider === 'gemini' || provider === 'openai') && (
-                        <div className="space-y-2">
-                          <Label htmlFor="ag-tts-key">
-                            API key OpenAI (só TTS)
-                            {provider === 'gemini' ? ' — obrigatória (criação)' : ' — opcional'}
-                          </Label>
-                          <Input
-                            id="ag-tts-key"
-                            type="password"
-                            autoComplete="off"
-                            className="bg-background"
-                            placeholder={isCreate ? '' : '(deixa vazio para manter)'}
-                            {...form.register('openai_tts_api_key', {
-                              onChange: (e) => setTtsKeyHint(hintFromApiKey(e.target.value)),
-                            })}
-                          />
-                          {ttsKeyHint && (
-                            <p className="text-xs text-muted-foreground">{ttsKeyHint}</p>
-                          )}
-                          {provider === 'gemini' && !isCreate && editing?.has_openai_tts_api_key && (
-                            <p className="text-xs text-text-muted">
-                              Chave TTS atual: …{editing.openai_tts_api_key_last4 || '****'}
-                            </p>
-                          )}
-                          {provider === 'openai' && !isCreate && editing?.has_openai_tts_api_key && (
-                            <p className="text-xs text-text-muted">
-                              Chave TTS dedicada: …{editing.openai_tts_api_key_last4 || '****'}
-                            </p>
-                          )}
-                        </div>
+                      ) : (
+                        <p className="text-xs text-text-muted">
+                          Com LLM OpenAI, indica uma API key Google (Gemini) com Speech/TTS ativo, ou define{' '}
+                          <code className="text-[10px]">GEMINI_API_KEY</code> no servidor.
+                        </p>
                       )}
+                      <div className="space-y-2">
+                        <Label htmlFor="ag-gemini-tts-key">
+                          API key Google (só TTS / opcional)
+                          {provider === 'openai' ? ' — obrigatória (criação) se não houver GEMINI_API_KEY no servidor' : ' — opcional'}
+                        </Label>
+                        <Input
+                          id="ag-gemini-tts-key"
+                          type="password"
+                          autoComplete="off"
+                          className="bg-background"
+                          placeholder={isCreate ? '' : '(deixa vazio para manter)'}
+                          {...form.register('gemini_tts_api_key', {
+                            onChange: (e) => setGeminiTtsKeyHint(hintFromApiKey(e.target.value)),
+                          })}
+                        />
+                        {geminiTtsKeyHint && (
+                          <p className="text-xs text-muted-foreground">{geminiTtsKeyHint}</p>
+                        )}
+                        {!isCreate && editing?.has_gemini_tts_api_key && (
+                          <p className="text-xs text-text-muted">
+                            Chave voz dedicada: …{editing.gemini_tts_api_key_last4 || '****'}
+                          </p>
+                        )}
+                      </div>
                     </>
+                  )}
+                  {ttsProvider === 'openai_tts' && (
+                    <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
+                      <p className="text-xs text-text-muted">
+                        <strong>OpenAI TTS (legado):</strong> este motor já não é recomendado na lista. Migrar para{' '}
+                        <strong>Gemini TTS</strong> quando possível.
+                      </p>
+                    </div>
                   )}
                   {ttsProvider === 'elevenlabs' && (
                     <div className="space-y-3">
@@ -1082,7 +1111,7 @@ export default function Agents() {
                                 {(!known || selectVal === VOICE_CUSTOM) && (
                                   <Input
                                     className="bg-background"
-                                    placeholder="ex. pf_dora, af_heart"
+                                    placeholder="ex. pf_dora, pm_alex (Outro ID: VOICES.md Kokoro-82M)"
                                     value={field.value}
                                     onChange={field.onChange}
                                     onBlur={field.onBlur}
@@ -1109,56 +1138,28 @@ export default function Agents() {
                     </div>
                   )}
                   {ttsProvider === 'omnivoice' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="ag-omni">URL base do OmniVoice</Label>
-                      <Input
-                        id="ag-omni"
-                        className="bg-background"
-                        placeholder="http://127.0.0.1:8000"
-                        {...form.register('omnivoice_base_url')}
-                      />
+                    <div className="space-y-3 rounded-md border border-amber-500/40 bg-amber-500/5 p-3">
                       <p className="text-xs text-text-muted">
-                        Servidor com endpoint compatível <code className="text-[10px]">POST /v1/audio/speech</code>{' '}
-                        (OpenAI). Podes deixar vazio se definires <code className="text-[10px]">OMNIVOICE_DEFAULT_BASE_URL</code>{' '}
-                        no <code className="text-[10px]">.env</code> da API. Acessível a partir do processo da API (ex.{' '}
-                        <code className="text-[10px]">http://host.docker.internal:PORT</code>).
+                        <strong>OmniVoice (legado):</strong> este motor já não aparece na lista para novos agentes.
+                        Migra para <strong>Kokoro</strong> quando puderes. Enquanto manténs OmniVoice, preenche a URL
+                        acessível pela API.
                       </p>
-                      {form.formState.errors.omnivoice_base_url && (
-                        <p className="text-xs text-destructive">
-                          {form.formState.errors.omnivoice_base_url.message}
-                        </p>
-                      )}
                       <div className="space-y-2">
-                        <Label>Voz OmniVoice</Label>
-                        <Controller
-                          control={form.control}
-                          name="openai_tts_voice"
-                          render={({ field }) => (
-                            <Select value={field.value} onValueChange={field.onChange}>
-                              <SelectTrigger className="bg-background">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="clone:atendimento_br">
-                                  Clone — atendimento BR (o teu áudio em voice-profiles)
-                                </SelectItem>
-                                <SelectItem value="nova">Design — estilo nova (female)</SelectItem>
-                                <SelectItem value="shimmer">Design — estilo shimmer (female)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          )}
+                        <Label htmlFor="ag-omni-legacy">URL base do OmniVoice</Label>
+                        <Input
+                          id="ag-omni-legacy"
+                          className="bg-background"
+                          placeholder="http://127.0.0.1:8000"
+                          {...form.register('omnivoice_base_url')}
                         />
-                        <p className="text-xs text-text-muted">
-                          O modo clone usa o teu{' '}
-                          <code className="text-[10px]">ref_audio.wav</code> + transcrição em{' '}
-                          <code className="text-[10px]">meta.json</code> — sotaque brasileiro vem do áudio de referência,
-                          não do modo design (<code className="text-[10px]">portuguese accent</code> soa mais europeu).
-                        </p>
-                        {form.formState.errors.openai_tts_voice && (
-                          <p className="text-xs text-destructive">
-                            {form.formState.errors.openai_tts_voice.message}
-                          </p>
-                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ag-omni-voice-legacy">Voz (ex. clone:atendimento_br ou nova)</Label>
+                        <Input
+                          id="ag-omni-voice-legacy"
+                          className="bg-background"
+                          {...form.register('openai_tts_voice')}
+                        />
                       </div>
                     </div>
                   )}

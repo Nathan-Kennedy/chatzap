@@ -62,7 +62,7 @@ func NormalizeTTSProvider(s string) string {
 	switch s {
 	case "", TTSProviderNone:
 		return TTSProviderNone
-	case TTSProviderOpenAI, TTSProviderOmnivoice, TTSProviderElevenLabs, TTSProviderKokoro:
+	case TTSProviderOpenAI, TTSProviderGemini, TTSProviderOmnivoice, TTSProviderElevenLabs, TTSProviderKokoro:
 		return s
 	default:
 		return TTSProviderNone

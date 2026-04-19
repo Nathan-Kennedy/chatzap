@@ -39,6 +39,10 @@ func agentToDTO(a model.AIAgent, cfg *config.Config) fiber.Map {
 	if !hasElAgent && hasElEnv && elLast4 == "" {
 		elLast4 = last4FromKey(cfg.ElevenLabsAPIKey)
 	}
+	gemTtsLast4 := strings.TrimSpace(a.GeminiTTSAPILast4)
+	if gemTtsLast4 == "" && strings.TrimSpace(a.GeminiTTSAPICipher) != "" {
+		gemTtsLast4 = "****"
+	}
 	return fiber.Map{
 		"id":                          a.ID.String(),
 		"name":                        a.Name,
@@ -56,6 +60,8 @@ func agentToDTO(a model.AIAgent, cfg *config.Config) fiber.Map {
 		"openai_tts_model":            strings.TrimSpace(a.OpenAITTSModel),
 		"has_openai_tts_api_key":      strings.TrimSpace(a.OpenAITTSAPICipher) != "",
 		"openai_tts_api_key_last4":    ttsLast4,
+		"has_gemini_tts_api_key":      strings.TrimSpace(a.GeminiTTSAPICipher) != "",
+		"gemini_tts_api_key_last4":    gemTtsLast4,
 		"omnivoice_base_url":          strings.TrimSpace(a.OmnivoiceBaseURL),
 		"kokoro_base_url":             strings.TrimSpace(a.KokoroBaseURL),
 		"has_elevenlabs_api_key":      hasElAgent || hasElEnv,
@@ -111,6 +117,7 @@ type createAgentBody struct {
 	OpenAITTSVoice          string `json:"openai_tts_voice"`
 	OpenAITTSModel          string `json:"openai_tts_model"`
 	OpenAITTSAPIKey         string `json:"openai_tts_api_key"`
+	GeminiTTSAPIKey         string `json:"gemini_tts_api_key"`
 	OmnivoiceBaseURL        string `json:"omnivoice_base_url"`
 	KokoroBaseURL           string `json:"kokoro_base_url"`
 	ElevenLabsAPIKey        string `json:"elevenlabs_api_key"`
@@ -153,6 +160,14 @@ func HandleCreateAgent(log *zap.Logger, db *gorm.DB, cfg *config.Config) fiber.H
 			if provider == "gemini" && ttsKey == "" {
 				return JSONError(c, fiber.StatusBadRequest, "validation_error",
 					"openai_tts_api_key obrigatório para TTS OpenAI quando o LLM é Gemini", nil)
+			}
+		}
+		if ttsProv == service.TTSProviderGemini {
+			gk := strings.TrimSpace(body.GeminiTTSAPIKey)
+			envGem := cfg != nil && strings.TrimSpace(cfg.GeminiAPIKey) != ""
+			if provider == "openai" && gk == "" && !envGem {
+				return JSONError(c, fiber.StatusBadRequest, "validation_error",
+					"gemini_tts_api_key obrigatório para TTS Gemini quando o LLM é OpenAI (ou defina GEMINI_API_KEY no servidor)", nil)
 			}
 		}
 		if ttsProv == service.TTSProviderOmnivoice {
@@ -226,6 +241,15 @@ func HandleCreateAgent(log *zap.Logger, db *gorm.DB, cfg *config.Config) fiber.H
 			agent.ElevenLabsAPICipher = ec
 			agent.ElevenLabsAPILast4 = last4FromKey(elKey)
 		}
+		gemTTSKey := strings.TrimSpace(body.GeminiTTSAPIKey)
+		if gemTTSKey != "" {
+			gc, err := cryptoagent.Encrypt(gemTTSKey, cfg.AppEncryptionKey)
+			if err != nil {
+				return JSONError(c, fiber.StatusInternalServerError, "encrypt_error", err.Error(), nil)
+			}
+			agent.GeminiTTSAPICipher = gc
+			agent.GeminiTTSAPILast4 = last4FromKey(gemTTSKey)
+		}
 		if err := db.Transaction(func(tx *gorm.DB) error {
 			if agent.UseForWhatsAppAutoReply {
 				if err := service.ClearOtherWhatsAppAutoReplyAgents(tx, wid, uuid.Nil); err != nil {
@@ -261,6 +285,7 @@ type patchAgentBody struct {
 	TTSProvider             *string `json:"tts_provider"`
 	OpenAITTSVoice          *string `json:"openai_tts_voice"`
 	OpenAITTSAPIKey         *string `json:"openai_tts_api_key"`
+	GeminiTTSAPIKey         *string `json:"gemini_tts_api_key"`
 	OmnivoiceBaseURL        *string `json:"omnivoice_base_url"`
 	OpenAITTSModel          *string `json:"openai_tts_model"`
 	KokoroBaseURL           *string `json:"kokoro_base_url"`
@@ -293,6 +318,14 @@ func validateAgentTTSAfterPatch(cur model.AIAgent, body patchAgentBody, cfg *con
 	}
 	if tp == service.TTSProviderOpenAI && prov == "gemini" && !hasTTSKey {
 		return fmt.Errorf("openai_tts_api_key obrigatório para TTS OpenAI quando o LLM é Gemini")
+	}
+	hasGemTTSKey := strings.TrimSpace(cur.GeminiTTSAPICipher) != ""
+	if body.GeminiTTSAPIKey != nil && strings.TrimSpace(*body.GeminiTTSAPIKey) != "" {
+		hasGemTTSKey = true
+	}
+	envGem := cfg != nil && strings.TrimSpace(cfg.GeminiAPIKey) != ""
+	if tp == service.TTSProviderGemini && prov == "openai" && !hasGemTTSKey && !envGem {
+		return fmt.Errorf("gemini_tts_api_key obrigatório para TTS Gemini quando o LLM é OpenAI (ou defina GEMINI_API_KEY no servidor)")
 	}
 	hasElKey := strings.TrimSpace(cur.ElevenLabsAPICipher) != ""
 	if body.ElevenLabsAPIKey != nil && strings.TrimSpace(*body.ElevenLabsAPIKey) != "" {
@@ -425,6 +458,21 @@ func HandlePatchAgent(log *zap.Logger, db *gorm.DB, cfg *config.Config) fiber.Ha
 				}
 				updates["openai_tts_api_key_cipher"] = tc
 				updates["openai_tts_api_key_last4"] = last4FromKey(k)
+			}
+		}
+		if body.GeminiTTSAPIKey != nil {
+			k := strings.TrimSpace(*body.GeminiTTSAPIKey)
+			if k != "" {
+				if strings.TrimSpace(cfg.AppEncryptionKey) == "" {
+					return JSONError(c, fiber.StatusServiceUnavailable, "encryption_not_configured",
+						"defina APP_ENCRYPTION_KEY no servidor para atualizar a chave Gemini TTS", nil)
+				}
+				gc, err := cryptoagent.Encrypt(k, cfg.AppEncryptionKey)
+				if err != nil {
+					return JSONError(c, fiber.StatusInternalServerError, "encrypt_error", err.Error(), nil)
+				}
+				updates["gemini_tts_api_key_cipher"] = gc
+				updates["gemini_tts_api_key_last4"] = last4FromKey(k)
 			}
 		}
 		if body.ElevenLabsAPIKey != nil {

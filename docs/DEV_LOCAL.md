@@ -94,6 +94,26 @@ Respostas **longas** na auto-resposta em voz são enviadas como **vários** fich
 | WhatsApp gateway | `GET http://127.0.0.1:3090/health` (se `npm run serve`) |
 | Web | Vite (ex. `http://localhost:5173`) |
 
+## 8. API na Hetzner + frontend no PC (checklist deploy)
+
+Quando o **backend** corre em Docker na Hetzner (ou outro servidor público) e o **Vite** corre no teu PC, o browser faz pedidos **cross-origin**. Sem isto, vês erros de rede ou CORS no consola.
+
+1. **`backend/.env` (servidor)**  
+   - `CORS_ALLOW_ORIGINS`: lista CSV com **todas** as origens do browser que vão falar com a API. Inclui pelo menos `http://localhost:5173` (Vite default) e, se usares outra porta/host, essa URL completa (sem path). Se no futuro servires o build estático com domínio próprio, adiciona `https://teu-dominio.com`.  
+   - `PUBLIC_WEBHOOK_BASE_URL`: URL **pública** HTTPS (ou HTTP só em testes) onde a Evolution (ou outro cliente) consegue fazer `POST /webhooks/whatsapp/:instance_id`. Deve apontar para o host onde a API está exposta (ex. `https://api.teudominio.com`).  
+   - `PUBLIC_MEDIA_BASE_URL`: URL base onde a Evolution faz `GET` dos ficheiros temporários (`/media/temp/:token`). Por defeito pode ser igual a `PUBLIC_WEBHOOK_BASE_URL`; o importante é o contentor Evolution alcançar esse host (não `localhost` do teu PC).
+
+2. **`apps/web/.env` (PC)**  
+   - `VITE_API_BASE_URL`: URL completa da API **incluindo** o prefixo `/api/v1`, ex. `https://api.teudominio.com/api/v1`.  
+   - `VITE_WS_URL` (se usas Inbox em tempo real): `wss://api.teudominio.com` ou o host onde o endpoint `/ws` está exposto (ajusta ao teu reverse proxy).
+
+3. **Reverse proxy / TLS**  
+   - Expõe a mesma origem para HTTP API e WebSocket, ou configura CORS + upgrade explícito conforme o teu Nginx/Caddy.
+
+4. **Smoke test**  
+   - No PC: `npm run dev` no `apps/web`, abre login. Se falhar com CORS, rever o passo 1.  
+   - Na Evolution: após **Instâncias → sincronizar webhook**, o URL gravado deve ser o público do passo 1.
+
 ## 7. Roadmap (ponte Go ↔ gateway)
 
 - Normalizar eventos do **whatsapp-gateway** (Redis `wa:gw:*` ou HTTP) para o mesmo envelope que [backend/internal/handler/webhook.go](../backend/internal/handler/webhook.go) espera da Evolution, ou consumir Redis no processo Go.

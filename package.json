@@ -19,7 +19,18 @@
     "wait:inbound": "cd backend && go run ./cmd/waitinbound",
     "omnivoice:server": "powershell -ExecutionPolicy Bypass -File scripts/run-omnivoice-server.ps1",
     "kokoro:server": "powershell -ExecutionPolicy Bypass -File scripts/run-kokoro-server.ps1",
-    "tts:local": "concurrently -n omnivoice,kokoro \"npm run omnivoice:server\" \"npm run kokoro:server\""
+    "kokoro:server:native": "powershell -ExecutionPolicy Bypass -File scripts/run-kokoro-server-native.ps1",
+    "tts:local": "concurrently -n omnivoice,kokoro \"npm run omnivoice:server\" \"npm run kokoro:server\"",
+    "tts:extras:install": "powershell -ExecutionPolicy Bypass -File scripts/install-tts-extras.ps1",
+    "tts:extras:samples": "powershell -ExecutionPolicy Bypass -File scripts/generate-voice-samples-extras.ps1",
+    "fish:download-checkpoints": "powershell -ExecutionPolicy Bypass -File scripts/download-fish-speech-checkpoints.ps1",
+    "fish:server": "powershell -ExecutionPolicy Bypass -File scripts/run-fish-speech-server.ps1",
+    "fish:tts:construcao-tags": "powershell -ExecutionPolicy Bypass -File scripts/run-fish-construcao-tags.ps1",
+    "cosyvoice:server": "powershell -ExecutionPolicy Bypass -File scripts/run-cosyvoice-server.ps1",
+    "cosyvoice:download-model": "powershell -ExecutionPolicy Bypass -File scripts/download-cosyvoice-model.ps1",
+    "voice-samples:paid": "python scripts/generate-voice-samples-paid.py --skip-openai",
+    "voice-samples:paid:gemini-missing": "python scripts/generate-voice-samples-paid.py --skip-openai --gemini-only-missing",
+    "voice-samples:paid:gemini-female-venda": "powershell -ExecutionPolicy Bypass -File scripts/run-gemini-female-venda.ps1"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

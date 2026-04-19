@@ -43,7 +43,11 @@ func RegenerateAgentVoicePreview(ctx context.Context, log *zap.Logger, db *gorm.
 		return db.Model(agent).Update("voice_preview_path", "").Error
 	}
 
-	text := TruncateForTTS(AgentVoicePreviewPhrase(agent.Name), MaxOpenAITTSInputRunes)
+	maxRunes := MaxOpenAITTSInputRunes
+	if prov == TTSProviderGemini {
+		maxRunes = MaxGeminiTTSInputRunes
+	}
+	text := TruncateForTTS(AgentVoicePreviewPhrase(agent.Name), maxRunes)
 	if text == "" {
 		return fmt.Errorf("frase de prévia vazia")
 	}
@@ -107,6 +111,18 @@ func RegenerateAgentVoicePreview(ctx context.Context, log *zap.Logger, db *gorm.
 			return db.Model(agent).Update("voice_preview_path", "").Error
 		}
 		audio, err = SynthKokoroOpenAICompat(ctx, kokoroBase, "", EffectiveKokoroTTSModel(cfg), voice, text)
+		ext = ".wav"
+	case TTSProviderGemini:
+		key, kerr := ResolveGeminiTTSAPIKey(appEncKey, cfg, agent)
+		if kerr != nil {
+			if log != nil {
+				log.Warn("prévia voz: sem chave Gemini TTS", zap.String("agent_id", agent.ID.String()), zap.Error(kerr))
+			}
+			_ = removeVoicePreviewFile(cfg, agent.VoicePreviewPath)
+			return db.Model(agent).Update("voice_preview_path", "").Error
+		}
+		inst := GeminiTTSInstructionPrefix(cfg)
+		audio, err = SynthGeminiTTS(ctx, key, EffectiveGeminiTTSModel(agent, cfg), voice, inst, text)
 		ext = ".wav"
 	default:
 		return fmt.Errorf("tts_provider inválido: %s", prov)
@@ -175,6 +191,7 @@ func VoicePreviewNeedsRegenerate(updates map[string]interface{}) bool {
 		"omnivoice_base_url",
 		"kokoro_base_url",
 		"openai_tts_api_key_cipher",
+		"gemini_tts_api_key_cipher",
 		"elevenlabs_api_key_cipher",
 	} {
 		if _, ok := updates[k]; ok {

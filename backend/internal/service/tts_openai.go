@@ -18,6 +18,7 @@ import (
 const (
 	TTSProviderNone       = "none"
 	TTSProviderOpenAI     = "openai_tts"
+	TTSProviderGemini     = "gemini_tts"
 	TTSProviderOmnivoice  = "omnivoice"
 	TTSProviderElevenLabs = "elevenlabs"
 	TTSProviderKokoro     = "kokoro"
@@ -131,6 +132,11 @@ func SanitizeVoiceForTTSProvider(ttsProv string, voice string, cfg *config.Confi
 			return "pf_dora"
 		}
 		return v
+	case TTSProviderGemini:
+		if c, ok := geminiTTSVoiceCanonical[strings.ToLower(v)]; ok {
+			return c
+		}
+		return "Kore"
 	default:
 		return v
 	}
@@ -147,6 +153,9 @@ func defaultVoiceWhenEmpty(p string, cfg *config.Config) string {
 	}
 	if p == TTSProviderKokoro {
 		return "pf_dora"
+	}
+	if p == TTSProviderGemini {
+		return "Kore"
 	}
 	return "nova"
 }

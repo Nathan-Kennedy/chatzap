@@ -19,6 +19,8 @@ type Conversation struct {
 	LastMessageAt      time.Time `gorm:"index"`
 	LastMessagePreview string    `gorm:"size:512"`
 	Channel            string    `gorm:"size:32;default:whatsapp"`
+	// Pipeline CRM (Kanban): novo | qualificado | proposta | fechado
+	PipelineStage string `gorm:"size:24;default:novo;index;column:pipeline_stage"`
 	AssignedAgentInitials string `gorm:"size:8"`
 	UpdatedAt          time.Time
 	CreatedAt          time.Time

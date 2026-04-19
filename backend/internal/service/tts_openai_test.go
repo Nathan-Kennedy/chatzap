@@ -20,6 +20,19 @@ func TestResolveStoredOpenAITTSVoice_omnivoiceDefaultClone(t *testing.T) {
 	}
 }
 
+func TestResolveStoredOpenAITTSVoice_geminiDefaultKore(t *testing.T) {
+	cfg := &config.Config{}
+	if got := ResolveStoredOpenAITTSVoice(TTSProviderGemini, "", cfg); got != "Kore" {
+		t.Fatalf("gemini vazio = Kore, got %q", got)
+	}
+	if got := ResolveStoredOpenAITTSVoice(TTSProviderGemini, "nova", cfg); got != "Kore" {
+		t.Fatalf("gemini + nome OpenAI devia normalizar para Kore, got %q", got)
+	}
+	if got := ResolveStoredOpenAITTSVoice(TTSProviderGemini, "leda", cfg); got != "Leda" {
+		t.Fatalf("gemini + leda, got %q", got)
+	}
+}
+
 func TestResolveStoredOpenAITTSVoice_elevenlabsSanitizeOpenAIName(t *testing.T) {
 	cfg := &config.Config{}
 	want := "21m00Tcm4TlvDq8ikWAM"

@@ -97,6 +97,15 @@ func SendAutoReplyVoice(
 		}
 	}
 
+	var geminiKey string
+	if prov == TTSProviderGemini {
+		k, err := ResolveGeminiTTSAPIKey(appEncKey, cfg, agent)
+		if err != nil {
+			return err
+		}
+		geminiKey = k
+	}
+
 	mimeType := "audio/mpeg"
 	ext := ".mp3"
 	if prov == TTSProviderOmnivoice {
@@ -104,6 +113,10 @@ func SendAutoReplyVoice(
 		ext = ".wav"
 	}
 	if prov == TTSProviderKokoro {
+		mimeType = "audio/wav"
+		ext = ".wav"
+	}
+	if prov == TTSProviderGemini {
 		mimeType = "audio/wav"
 		ext = ".wav"
 	}
@@ -116,6 +129,9 @@ func SendAutoReplyVoice(
 	for i, part := range parts {
 		if i > 0 {
 			pause := PauseBetweenChunks()
+			if prov == TTSProviderGemini {
+				pause = pause + 1500*time.Millisecond
+			}
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -123,7 +139,11 @@ func SendAutoReplyVoice(
 			}
 		}
 
-		text := TruncateForTTS(strings.TrimSpace(part), MaxOpenAITTSInputRunes)
+		maxRunes := MaxOpenAITTSInputRunes
+		if prov == TTSProviderGemini {
+			maxRunes = MaxGeminiTTSInputRunes
+		}
+		text := TruncateForTTS(strings.TrimSpace(part), maxRunes)
 		if text == "" {
 			continue
 		}
@@ -143,6 +163,9 @@ func SendAutoReplyVoice(
 			audio, err = SynthElevenLabs(ctx, elevenKey, voice, text, EffectiveElevenLabsModel(cfg))
 		case TTSProviderKokoro:
 			audio, err = SynthKokoroOpenAICompat(ctx, kokoroBase, "", EffectiveKokoroTTSModel(cfg), voice, text)
+		case TTSProviderGemini:
+			inst := GeminiTTSInstructionPrefix(cfg)
+			audio, err = SynthGeminiTTS(ctx, geminiKey, EffectiveGeminiTTSModel(agent, cfg), voice, inst, text)
 		default:
 			return fmt.Errorf("tts_provider inválido: %s", prov)
 		}

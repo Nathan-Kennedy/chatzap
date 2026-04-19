@@ -53,6 +53,9 @@ type Config struct {
 	LLMProvider      string
 	GeminiAPIKey     string
 	GeminiModel      string
+	// Gemini TTS (Speech API): modelo e instrução antes do texto (opcional; vazio = preset no código).
+	GeminiTTSModel       string
+	GeminiTTSInstruction string
 	OpenAIAPIKey     string
 	OpenAIModel      string
 	LLMSystemPrompt  string // partilhado entre Gemini e OpenAI
@@ -86,6 +89,11 @@ type Config struct {
 	ElevenLabsDefaultModel string // ex. eleven_multilingual_v2
 	// ElevenLabsAPIKey xi-api-key global (fallback se o agente não tiver chave na UI). Não logar.
 	ElevenLabsAPIKey string
+	// ElevenLabsAPIBaseURL raiz da API (residência EU/US/in: ver documentação). Não logar.
+	ElevenLabsAPIBaseURL string
+	// ConvAI + Twilio: outbound call (https://elevenlabs.io/docs/api-reference/twilio/outbound-call)
+	ElevenLabsConvAIAgentID            string
+	ElevenLabsConvAIAgentPhoneNumberID string
 	// Kokoro (servidor compat. OpenAI, ex. Kokoro-FastAPI)
 	KokoroDefaultBaseURL string
 	KokoroTTSModel       string // corpo JSON "model" (ex. kokoro)
@@ -122,48 +130,53 @@ func Load() (*Config, error) {
 	}
 
 	c := &Config{
-		Env:                     env,
-		HTTPPort:                httpPort,
-		PublicWebhookBaseURL:    strings.TrimRight(publicWh, "/"),
-		PublicMediaBaseURL:      mediaBase,
-		MediaUploadDir:          mediaDir,
-		MediaMaxUploadBytes:     maxMedia,
-		MediaTokenTTLMinutes:    mediaTTL,
-		MediaPersistentDir:      persistDir,
-		DatabaseURL:             os.Getenv("DATABASE_URL"),
-		RedisURL:                get("REDIS_URL", "redis://127.0.0.1:6379/0"),
-		LogLevel:                get("LOG_LEVEL", "info"),
-		CORSAllowOrigins:        splitCSV(get("CORS_ALLOW_ORIGINS", "http://localhost:5173")),
-		WhatsAppProvider:        normalizeWhatsAppProvider(get("WHATSAPP_PROVIDER", "evolution")),
-		EvolutionBaseURL:        strings.TrimRight(os.Getenv("EVOLUTION_BASE_URL"), "/"),
-		EvolutionAPIKey:         os.Getenv("EVOLUTION_API_KEY"),
-		EvolutionInstanceName:   get("EVOLUTION_INSTANCE_NAME", "default"),
-		WebhookSharedSecret:     os.Getenv("WEBHOOK_SHARED_SECRET"),
-		EvolutionWebhookAPIKey:  os.Getenv("EVOLUTION_WEBHOOK_API_KEY"),
-		InsecureSkipWebhookAuth: parseBool(get("INSECURE_SKIP_WEBHOOK_AUTH", "false")),
-		InternalAPIKey:          os.Getenv("INTERNAL_API_KEY"),
-		LLMProvider:             normalizeLLMProvider(get("LLM_PROVIDER", "gemini")),
-		GeminiAPIKey:            os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:             get("GEMINI_MODEL", "gemini-2.5-flash"),
-		OpenAIAPIKey:            os.Getenv("OPENAI_API_KEY"),
-		OpenAIModel:             get("OPENAI_MODEL", "gpt-4o-mini"),
-		LLMSystemPrompt:         getLLMSystemPrompt(),
-		AutoReplyEnabled:        parseBool(get("AUTO_REPLY_ENABLED", "true")),
-		JWTSecret:               os.Getenv("JWT_SECRET"),
-		JWTAccessTTLMinutes:     parseInt(get("JWT_ACCESS_TTL_MINUTES", "1440"), 1440),
-		JWTRefreshTTLDays:       parseInt(get("JWT_REFRESH_TTL_DAYS", "7"), 7),
-		AppEncryptionKey:        strings.TrimSpace(os.Getenv("APP_ENCRYPTION_KEY")),
-		OmnivoiceDefaultBaseURL:  strings.TrimRight(strings.TrimSpace(os.Getenv("OMNIVOICE_DEFAULT_BASE_URL")), "/"),
-		OmnivoiceDefaultTTSVoice: strings.TrimSpace(os.Getenv("OMNIVOICE_DEFAULT_TTS_VOICE")),
-		OmnivoiceDesignInstruct: strings.TrimSpace(os.Getenv("OMNIVOICE_DESIGN_INSTRUCT")),
-		OmnivoiceTTSSpeed:       parseFloatNonNeg(os.Getenv("OMNIVOICE_TTS_SPEED")),
-		OmnivoiceTTSNumStep:     parseIntNonNeg(os.Getenv("OMNIVOICE_TTS_NUM_STEP")),
-		OpenAITTSModel:          strings.TrimSpace(os.Getenv("OPENAI_TTS_MODEL")),
-		OpenAITTSInstructions:   strings.TrimSpace(os.Getenv("OPENAI_TTS_INSTRUCTIONS")),
-		ElevenLabsDefaultModel:  strings.TrimSpace(os.Getenv("ELEVENLABS_DEFAULT_MODEL")),
-		ElevenLabsAPIKey:        strings.TrimSpace(os.Getenv("ELEVENLABS_API_KEY")),
-		KokoroDefaultBaseURL:    strings.TrimRight(strings.TrimSpace(os.Getenv("KOKORO_DEFAULT_BASE_URL")), "/"),
-		KokoroTTSModel:          strings.TrimSpace(os.Getenv("KOKORO_TTS_MODEL")),
+		Env:                                env,
+		HTTPPort:                           httpPort,
+		PublicWebhookBaseURL:               strings.TrimRight(publicWh, "/"),
+		PublicMediaBaseURL:                 mediaBase,
+		MediaUploadDir:                     mediaDir,
+		MediaMaxUploadBytes:                maxMedia,
+		MediaTokenTTLMinutes:               mediaTTL,
+		MediaPersistentDir:                 persistDir,
+		DatabaseURL:                        os.Getenv("DATABASE_URL"),
+		RedisURL:                           get("REDIS_URL", "redis://127.0.0.1:6379/0"),
+		LogLevel:                           get("LOG_LEVEL", "info"),
+		CORSAllowOrigins:                   splitCSV(get("CORS_ALLOW_ORIGINS", "http://localhost:5173")),
+		WhatsAppProvider:                   normalizeWhatsAppProvider(get("WHATSAPP_PROVIDER", "evolution")),
+		EvolutionBaseURL:                   strings.TrimRight(os.Getenv("EVOLUTION_BASE_URL"), "/"),
+		EvolutionAPIKey:                    os.Getenv("EVOLUTION_API_KEY"),
+		EvolutionInstanceName:              get("EVOLUTION_INSTANCE_NAME", "default"),
+		WebhookSharedSecret:                os.Getenv("WEBHOOK_SHARED_SECRET"),
+		EvolutionWebhookAPIKey:             os.Getenv("EVOLUTION_WEBHOOK_API_KEY"),
+		InsecureSkipWebhookAuth:            parseBool(get("INSECURE_SKIP_WEBHOOK_AUTH", "false")),
+		InternalAPIKey:                     os.Getenv("INTERNAL_API_KEY"),
+		LLMProvider:                        normalizeLLMProvider(get("LLM_PROVIDER", "gemini")),
+		GeminiAPIKey:                       os.Getenv("GEMINI_API_KEY"),
+		GeminiModel:                        get("GEMINI_MODEL", "gemini-2.5-flash"),
+		GeminiTTSModel:                     strings.TrimSpace(os.Getenv("GEMINI_TTS_MODEL")),
+		GeminiTTSInstruction:               strings.TrimSpace(os.Getenv("GEMINI_TTS_INSTRUCTION")),
+		OpenAIAPIKey:                       os.Getenv("OPENAI_API_KEY"),
+		OpenAIModel:                        get("OPENAI_MODEL", "gpt-4o-mini"),
+		LLMSystemPrompt:                    getLLMSystemPrompt(),
+		AutoReplyEnabled:                   parseBool(get("AUTO_REPLY_ENABLED", "true")),
+		JWTSecret:                          os.Getenv("JWT_SECRET"),
+		JWTAccessTTLMinutes:                parseInt(get("JWT_ACCESS_TTL_MINUTES", "1440"), 1440),
+		JWTRefreshTTLDays:                  parseInt(get("JWT_REFRESH_TTL_DAYS", "7"), 7),
+		AppEncryptionKey:                   strings.TrimSpace(os.Getenv("APP_ENCRYPTION_KEY")),
+		OmnivoiceDefaultBaseURL:            strings.TrimRight(strings.TrimSpace(os.Getenv("OMNIVOICE_DEFAULT_BASE_URL")), "/"),
+		OmnivoiceDefaultTTSVoice:           strings.TrimSpace(os.Getenv("OMNIVOICE_DEFAULT_TTS_VOICE")),
+		OmnivoiceDesignInstruct:            strings.TrimSpace(os.Getenv("OMNIVOICE_DESIGN_INSTRUCT")),
+		OmnivoiceTTSSpeed:                  parseFloatNonNeg(os.Getenv("OMNIVOICE_TTS_SPEED")),
+		OmnivoiceTTSNumStep:                parseIntNonNeg(os.Getenv("OMNIVOICE_TTS_NUM_STEP")),
+		OpenAITTSModel:                     strings.TrimSpace(os.Getenv("OPENAI_TTS_MODEL")),
+		OpenAITTSInstructions:              strings.TrimSpace(os.Getenv("OPENAI_TTS_INSTRUCTIONS")),
+		ElevenLabsDefaultModel:             strings.TrimSpace(os.Getenv("ELEVENLABS_DEFAULT_MODEL")),
+		ElevenLabsAPIKey:                   strings.TrimSpace(os.Getenv("ELEVENLABS_API_KEY")),
+		ElevenLabsAPIBaseURL:               strings.TrimRight(strings.TrimSpace(os.Getenv("ELEVENLABS_API_BASE_URL")), "/"),
+		ElevenLabsConvAIAgentID:            strings.TrimSpace(os.Getenv("ELEVENLABS_CONVAI_AGENT_ID")),
+		ElevenLabsConvAIAgentPhoneNumberID: strings.TrimSpace(os.Getenv("ELEVENLABS_CONVAI_AGENT_PHONE_NUMBER_ID")),
+		KokoroDefaultBaseURL:               strings.TrimRight(strings.TrimSpace(os.Getenv("KOKORO_DEFAULT_BASE_URL")), "/"),
+		KokoroTTSModel:                     strings.TrimSpace(os.Getenv("KOKORO_TTS_MODEL")),
 	}
 
 	if raw := os.Getenv("ALLOWED_INSTANCE_IDS"); raw != "" {

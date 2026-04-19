@@ -1,4 +1,6 @@
-import { ExternalLink, MessageCircle, Phone } from 'lucide-react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { ExternalLink, Loader2, MessageCircle, Phone } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,13 +10,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { api } from '@/lib/api'
 import { digitsForDial, telUrl, waMeUrl } from '@/utils/phone'
 import { avatarColorClass, initialsFromName } from '@/utils/initials'
 import { cn } from '@/lib/utils'
+import { ApiEnvelopeError, type ApiSuccessEnvelope } from '@/types/api'
 
 /** Documentação oficial — chamadas iniciadas pela empresa (WABA), não é integração automática aqui. */
 const META_CALLING_DOCS =
   'https://developers.facebook.com/docs/whatsapp/cloud-api/calling/business-initiated-calls'
+
+const ELEVENLABS_TWILIO_DOCS = 'https://elevenlabs.io/docs/conversational-ai/integrations/twilio'
+
+type ApiMetaPayload = {
+  elevenlabs_outbound_call_enabled?: boolean
+}
+
+type ElevenLabsOutboundResponse = {
+  success: boolean
+  message: string
+  conversation_id?: string | null
+  call_sid?: string | null
+}
 
 type Props = {
   open: boolean
@@ -29,6 +46,43 @@ export function CallContactModal({ open, onOpenChange, contactName, phoneOrJid }
   const tel = telUrl(phoneOrJid)
   const av = avatarColorClass(contactName)
   const ini = initialsFromName(contactName)
+  const digits = digitsForDial(phoneOrJid)
+  const toE164 = digits.length >= 8 ? `+${digits}` : ''
+
+  const { data: meta } = useQuery({
+    queryKey: ['api-meta'],
+    queryFn: async () => {
+      const res = await api.get<ApiSuccessEnvelope<ApiMetaPayload>>('/meta')
+      return res.data.data
+    },
+    enabled: open,
+    staleTime: 60_000,
+  })
+
+  const elevenOutbound = Boolean(meta?.elevenlabs_outbound_call_enabled)
+
+  const outboundMut = useMutation({
+    mutationFn: async () => {
+      const res = await api.post<ApiSuccessEnvelope<ElevenLabsOutboundResponse>>('/elevenlabs/outbound-call', {
+        to_number: toE164,
+      })
+      return res.data.data
+    },
+    onSuccess: (data) => {
+      const extra =
+        data.call_sid != null && String(data.call_sid).trim() !== ''
+          ? ` (CallSid: ${data.call_sid})`
+          : ''
+      toast.success(data.message || 'Pedido de ligação enviado.', { description: extra || undefined })
+    },
+    onError: (e: unknown) => {
+      if (e instanceof ApiEnvelopeError) {
+        toast.error(e.message)
+        return
+      }
+      toast.error('Falha ao iniciar ligação ElevenLabs.')
+    },
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,6 +135,37 @@ export function CallContactModal({ open, onOpenChange, contactName, phoneOrJid }
                 Ligar por telefone (operadora)
               </a>
             </Button>
+          ) : null}
+          {elevenOutbound && toE164 ? (
+            <div className="rounded-md border border-zinc-700/80 bg-zinc-900/40 p-3 space-y-2">
+              <p className="text-[11px] text-zinc-400 text-left leading-relaxed">
+                Ligação com <strong className="text-zinc-300">agente ElevenLabs</strong> (ConvAI) via Twilio. O número
+                tem de incluir o indicativo do país (E.164). Confirma no painel ElevenLabs que o Twilio está associado ao
+                agente.
+              </p>
+              <Button
+                type="button"
+                className="w-full bg-violet-600 hover:bg-violet-500 text-white gap-2 h-11"
+                disabled={outboundMut.isPending}
+                onClick={() => outboundMut.mutate()}
+              >
+                {outboundMut.isPending ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Phone className="size-4" />
+                )}
+                Ligar com agente ElevenLabs
+              </Button>
+              <a
+                href={ELEVENLABS_TWILIO_DOCS}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-400"
+              >
+                Documentação Twilio + ElevenLabs
+                <ExternalLink className="size-3 shrink-0 opacity-70" />
+              </a>
+            </div>
           ) : null}
           <a
             href={META_CALLING_DOCS}

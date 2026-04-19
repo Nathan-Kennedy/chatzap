@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -35,8 +36,18 @@ const contactSchema = z.object({
 
 type ContactForm = z.infer<typeof contactSchema>
 
+const SEARCH_DEBOUNCE_MS = 300
+
 export default function Contacts() {
-  const { data: rows = [], isLoading } = useContacts()
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(searchInput.trim()), SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
+
+  const { data: rows = [], isLoading } = useContacts(debouncedSearch || undefined)
   const form = useForm<ContactForm>({
     resolver: zodResolver(contactSchema),
     defaultValues: { name: '', phone: '', email: '' },
@@ -71,7 +82,13 @@ export default function Contacts() {
           </Button>
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted size-4" />
-            <Input placeholder="Buscar…" className="pl-9 bg-card" disabled title="Busca via API em breve" />
+            <Input
+              placeholder="Buscar por nome ou telefone…"
+              className="pl-9 bg-card"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              aria-label="Buscar contactos"
+            />
           </div>
           <Sheet>
             <SheetTrigger asChild>

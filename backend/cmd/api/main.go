@@ -54,6 +54,8 @@ func main() {
 		&model.WebhookMessage{},
 		&model.MediaTempToken{},
 		&model.AIAgent{},
+		&model.Flow{},
+		&model.Campaign{},
 	); err != nil {
 		log.Fatal("migrate", zap.Error(err))
 	}
@@ -134,6 +136,7 @@ func main() {
 	authMW := middleware.RequireAuth(cfg)
 	api := app.Group("/api/v1")
 	api.Get("/auth/me", authMW, handler.HandleMe(db))
+	api.Patch("/auth/me", authMW, handler.HandlePatchMe(log, db, cfg))
 
 	api.Get("/instances", authMW, handler.HandleListInstances(log, db, cfg, ev))
 	api.Post("/instances", authMW, handler.HandleCreateInstance(log, db, cfg, ev))
@@ -156,18 +159,23 @@ func main() {
 
 	api.Get("/contacts", authMW, handler.HandleListContacts(db))
 	api.Get("/analytics/overview", authMW, handler.HandleAnalyticsOverview(db))
+	api.Get("/analytics/timeseries", authMW, handler.HandleAnalyticsTimeseries(db))
 	api.Get("/workspace", authMW, handler.HandleGetWorkspace(db))
 	api.Patch("/workspace", authMW, handler.HandlePatchWorkspace(db))
 
 	api.Get("/agents", authMW, handler.HandleListAgents(db, cfg))
+	api.Post("/elevenlabs/outbound-call", authMW, handler.HandleElevenLabsOutboundCall(cfg, log))
 	api.Post("/agents", authMW, handler.HandleCreateAgent(log, db, cfg))
 	api.Patch("/agents/:id", authMW, handler.HandlePatchAgent(log, db, cfg))
 	api.Delete("/agents/:id", authMW, handler.HandleDeleteAgent(db, cfg))
 	api.Get("/agents/:id/voice-preview", authMW, handler.HandleGetAgentVoicePreview(db, cfg))
 	api.Post("/agents/:id/test", authMW, handler.HandleTestAgent(db, cfg))
-	api.Get("/flows", authMW, handler.HandleListFlows())
-	api.Get("/campaigns", authMW, handler.HandleListCampaigns())
-	api.Get("/kanban/board", authMW, handler.HandleKanbanBoard())
+	api.Get("/flows", authMW, handler.HandleListFlows(db))
+	api.Post("/flows", authMW, handler.HandleCreateFlow(log, db))
+	api.Get("/campaigns", authMW, handler.HandleListCampaigns(db))
+	api.Post("/campaigns", authMW, handler.HandleCreateCampaign(log, db))
+	api.Get("/kanban/board", authMW, handler.HandleKanbanBoard(db))
+	api.Patch("/kanban/cards/:conversation_id", authMW, handler.HandleKanbanMoveCard(db))
 
 	app.Get("/ws", handler.WebSocketRoute(cfg, log, rdb))
 

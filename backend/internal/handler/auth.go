@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/mail"
 	"strings"
 	"time"
 
@@ -256,6 +257,90 @@ func HandleMe(db *gorm.DB) fiber.Handler {
 				"role":  role,
 			},
 			"workspace_id":   ws.ID.String(),
+			"workspace_name": ws.Name,
+		})
+	}
+}
+
+type patchMeBody struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
+// HandlePatchMe PATCH /api/v1/auth/me — atualiza nome e e-mail; devolve novo access JWT (refresh mantém-se).
+func HandlePatchMe(log *zap.Logger, db *gorm.DB, cfg *config.Config) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		uidStr, ok := c.Locals(middleware.LocalUserID).(string)
+		if !ok || uidStr == "" {
+			return JSONError(c, fiber.StatusUnauthorized, "unauthorized", "sessão inválida", nil)
+		}
+		widStr, ok := c.Locals(middleware.LocalWorkspaceID).(string)
+		if !ok || widStr == "" {
+			return JSONError(c, fiber.StatusUnauthorized, "unauthorized", "sessão inválida", nil)
+		}
+		role, _ := c.Locals(middleware.LocalRole).(string)
+		uid, err := uuid.Parse(uidStr)
+		if err != nil {
+			return JSONError(c, fiber.StatusUnauthorized, "unauthorized", "sessão inválida", nil)
+		}
+		wid, err := uuid.Parse(widStr)
+		if err != nil {
+			return JSONError(c, fiber.StatusUnauthorized, "unauthorized", "sessão inválida", nil)
+		}
+
+		var body patchMeBody
+		if err := c.BodyParser(&body); err != nil {
+			return JSONError(c, fiber.StatusBadRequest, "invalid_body", "JSON inválido", nil)
+		}
+		name := strings.TrimSpace(body.Name)
+		email := strings.TrimSpace(strings.ToLower(body.Email))
+		if name == "" {
+			return JSONError(c, fiber.StatusBadRequest, "validation_error", "nome é obrigatório", nil)
+		}
+		if email == "" {
+			return JSONError(c, fiber.StatusBadRequest, "validation_error", "e-mail é obrigatório", nil)
+		}
+		if _, err := mail.ParseAddress(email); err != nil {
+			return JSONError(c, fiber.StatusBadRequest, "validation_error", "e-mail inválido", nil)
+		}
+
+		var other int64
+		if err := db.Model(&model.User{}).Where("email = ? AND id <> ?", email, uid).Count(&other).Error; err != nil {
+			log.Error("patch me count email", zap.Error(err))
+			return JSONError(c, fiber.StatusInternalServerError, "db_error", "falha ao validar e-mail", nil)
+		}
+		if other > 0 {
+			return JSONError(c, fiber.StatusConflict, "email_taken", "este e-mail já está em uso", nil)
+		}
+
+		if err := db.Model(&model.User{}).Where("id = ?", uid).Updates(map[string]interface{}{
+			"name":       name,
+			"email":      email,
+			"updated_at": time.Now(),
+		}).Error; err != nil {
+			log.Error("patch me update", zap.Error(err))
+			return JSONError(c, fiber.StatusInternalServerError, "db_error", "falha ao atualizar perfil", nil)
+		}
+
+		access, err := service.IssueAccessToken(cfg, uid, wid, role, email, name)
+		if err != nil {
+			log.Error("patch me jwt", zap.Error(err))
+			return JSONError(c, fiber.StatusInternalServerError, "token_error", "falha ao emitir token", nil)
+		}
+
+		var ws model.Workspace
+		_ = db.First(&ws, "id = ?", wid).Error
+
+		return JSONSuccess(c, fiber.Map{
+			"access_token": access,
+			"expires_in":   cfg.JWTAccessTTLMinutes * 60,
+			"user": fiber.Map{
+				"id":    uid.String(),
+				"email": email,
+				"name":  name,
+				"role":  role,
+			},
+			"workspace_id":   wid.String(),
 			"workspace_name": ws.Name,
 		})
 	}

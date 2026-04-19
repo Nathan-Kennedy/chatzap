@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   DragDropContext,
   Droppable,
@@ -6,23 +6,20 @@ import {
   type DropResult,
 } from '@hello-pangea/dnd'
 import { MessageSquare } from 'lucide-react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { api, unwrapEnvelope } from '@/lib/api'
+import { ApiEnvelopeError } from '@/types/api'
+import { toast } from 'sonner'
 
 type Card = {
   id: string
   title: string
   phone: string
-  value?: number
   tags: string[]
-}
-
-const initial: Record<string, Card[]> = {
-  novo: [],
-  qualificado: [],
-  proposta: [],
-  fechado: [],
 }
 
 const columns: { id: string; title: string }[] = [
@@ -32,11 +29,68 @@ const columns: { id: string; title: string }[] = [
   { id: 'fechado', title: 'Fechado' },
 ]
 
+type KanbanBoardPayload = {
+  stages: Record<string, Card[]>
+}
+
+function emptyCols(): Record<string, Card[]> {
+  const o: Record<string, Card[]> = {}
+  for (const c of columns) {
+    o[c.id] = []
+  }
+  return o
+}
+
+async function fetchBoard(): Promise<Record<string, Card[]>> {
+  const res = await api.get<unknown>('/kanban/board')
+  const { data } = unwrapEnvelope<KanbanBoardPayload>(res)
+  const next = emptyCols()
+  for (const c of columns) {
+    const list = data.stages?.[c.id]
+    if (Array.isArray(list)) {
+      next[c.id] = list.map((x) => ({
+        id: x.id,
+        title: x.title || '—',
+        phone: x.phone || '',
+        tags: Array.isArray(x.tags) ? x.tags : [],
+      }))
+    }
+  }
+  return next
+}
+
 export default function Kanban() {
-  const [cols, setCols] = useState(initial)
+  const qc = useQueryClient()
+  const [cols, setCols] = useState<Record<string, Card[]>>(emptyCols)
+
+  const { data: serverCols, isLoading } = useQuery({
+    queryKey: ['kanban', 'board'],
+    queryFn: fetchBoard,
+  })
+
+  useEffect(() => {
+    if (serverCols) {
+      setCols(serverCols)
+    }
+  }, [serverCols])
+
+  const moveMut = useMutation({
+    mutationFn: async ({ conversationId, stage }: { conversationId: string; stage: string }) => {
+      const res = await api.patch<unknown>(`/kanban/cards/${conversationId}`, { stage })
+      return unwrapEnvelope<{ id: string; pipeline_stage: string }>(res).data
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['kanban', 'board'] })
+    },
+    onError: (e: unknown) => {
+      if (e instanceof ApiEnvelopeError) toast.error(e.message)
+      else toast.error('Falha ao mover card')
+      void qc.invalidateQueries({ queryKey: ['kanban', 'board'] })
+    },
+  })
 
   function onDragEnd(result: DropResult) {
-    const { source, destination } = result
+    const { source, destination, draggableId } = result
     if (!destination) return
     if (
       source.droppableId === destination.droppableId &&
@@ -44,6 +98,7 @@ export default function Kanban() {
     ) {
       return
     }
+
     setCols((prev) => {
       const next = { ...prev }
       const from = [...(next[source.droppableId] ?? [])]
@@ -55,6 +110,11 @@ export default function Kanban() {
       next[destination.droppableId] = to
       return next
     })
+
+    moveMut.mutate({
+      conversationId: draggableId,
+      stage: destination.droppableId,
+    })
   }
 
   return (
@@ -62,12 +122,18 @@ export default function Kanban() {
       <div className="flex items-center justify-between shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Pipeline CRM</h1>
-          <p className="text-sm text-text-muted">Arraste cards entre etapas (mock)</p>
+          <p className="text-sm text-text-muted">
+            Conversas do workspace por etapa (guardado no servidor). Arraste para alterar.
+          </p>
         </div>
-        <Button variant="outline" size="sm">
-          + Coluna
+        <Button variant="outline" size="sm" asChild>
+          <Link to="/inbox">Abrir Inbox</Link>
         </Button>
       </div>
+
+      {isLoading ? (
+        <p className="text-sm text-text-muted">A carregar…</p>
+      ) : null}
 
       <DragDropContext onDragEnd={onDragEnd}>
         <div className="flex gap-4 overflow-x-auto pb-2 flex-1 min-h-0">
@@ -103,11 +169,6 @@ export default function Kanban() {
                             <div className="text-text-muted text-xs mt-1">
                               {card.phone}
                             </div>
-                            {card.value != null && (
-                              <div className="text-xs text-success mt-2">
-                                R$ {card.value.toLocaleString('pt-BR')}
-                              </div>
-                            )}
                             <div className="flex gap-1 mt-2 flex-wrap">
                               {card.tags.map((t) => (
                                 <Badge key={t} variant="outline" className="text-[10px]">
@@ -120,8 +181,11 @@ export default function Kanban() {
                               variant="ghost"
                               size="icon"
                               className="h-7 w-7 mt-2 text-green-500"
+                              asChild
                             >
-                              <MessageSquare className="size-4" />
+                              <Link to="/inbox" title="Abrir caixa de entrada">
+                                <MessageSquare className="size-4" />
+                              </Link>
                             </Button>
                           </div>
                         )}

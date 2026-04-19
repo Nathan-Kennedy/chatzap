@@ -12,6 +12,9 @@ import { Switch } from '@/components/ui/switch'
 import { toast } from 'sonner'
 import { useAuthProfile } from '@/hooks/useAuthProfile'
 import { api, unwrapEnvelope } from '@/lib/api'
+import { getRefreshToken, setAuthProfile, setTokens } from '@/lib/auth-storage'
+import { authProfileQueryKey } from '@/hooks/useAuthProfile'
+import type { LoginResponseData } from '@/types/auth'
 import { ApiEnvelopeError } from '@/types/api'
 
 const profileSchema = z.object({
@@ -64,6 +67,29 @@ export default function Settings() {
     if (ws?.name) wsForm.reset({ name: ws.name })
   }, [ws, wsForm])
 
+  const patchProfile = useMutation({
+    mutationFn: async (v: ProfileForm) => {
+      const res = await api.patch<unknown>('/auth/me', { name: v.name.trim(), email: v.email.trim() })
+      return unwrapEnvelope<LoginResponseData>(res).data
+    },
+    onSuccess: (data) => {
+      setTokens(data.access_token, data.refresh_token ?? getRefreshToken() ?? undefined)
+      setAuthProfile({
+        workspace_id: data.workspace_id,
+        workspace_name: data.workspace_name,
+        role: data.user.role,
+        user_name: data.user.name,
+        user_email: data.user.email,
+      })
+      toast.success('Perfil atualizado')
+      void qc.invalidateQueries({ queryKey: authProfileQueryKey })
+    },
+    onError: (e: unknown) => {
+      if (e instanceof ApiEnvelopeError) toast.error(e.message)
+      else toast.error('Falha ao guardar perfil')
+    },
+  })
+
   const patchWs = useMutation({
     mutationFn: async (name: string) => {
       const res = await api.patch('/workspace', { name })
@@ -96,14 +122,12 @@ export default function Settings() {
           <Card className="bg-card border-border">
             <CardHeader>
               <CardTitle>Perfil</CardTitle>
-              <CardDescription>Dados da sessão atual (edição de perfil no servidor em breve)</CardDescription>
+              <CardDescription>Nome e e-mail guardados no servidor; o token de acesso é renovado.</CardDescription>
             </CardHeader>
             <CardContent>
               <form
                 className="space-y-4 max-w-md"
-                onSubmit={form.handleSubmit(() =>
-                  toast.info('Atualização de perfil: em breve (PATCH /users/me)')
-                )}
+                onSubmit={form.handleSubmit((v) => patchProfile.mutate(v))}
               >
                 <div className="space-y-2">
                   <Label htmlFor="s-name">Nome</Label>
@@ -113,7 +137,9 @@ export default function Settings() {
                   <Label htmlFor="s-email">E-mail</Label>
                   <Input id="s-email" type="email" {...form.register('email')} />
                 </div>
-                <Button type="submit">Salvar</Button>
+                <Button type="submit" disabled={patchProfile.isPending}>
+                  {patchProfile.isPending ? 'A guardar…' : 'Salvar'}
+                </Button>
               </form>
             </CardContent>
           </Card>

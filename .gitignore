@@ -47,3 +47,7 @@ errors.txt
 *.njsproj
 *.sln
 *.sw?
+
+# Amostras TTS geradas localmente (regenerar com npm run voice-samples:*)
+voice-samples/**/*.wav
+voice-samples/**/*.mp3

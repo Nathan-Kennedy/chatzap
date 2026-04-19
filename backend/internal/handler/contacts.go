@@ -3,6 +3,7 @@ package handler
 import (
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -24,7 +25,21 @@ func HandleListContacts(db *gorm.DB) fiber.Handler {
 		tx := db.Model(&model.Conversation{}).Where("workspace_id = ?", wid).Order("contact_name ASC").Limit(500)
 		if q != "" {
 			like := "%" + strings.ToLower(q) + "%"
-			tx = tx.Where("LOWER(contact_name) LIKE ? OR LOWER(contact_j_id) LIKE ?", like, like)
+			var digits strings.Builder
+			for _, r := range q {
+				if unicode.IsDigit(r) {
+					digits.WriteRune(r)
+				}
+			}
+			d := digits.String()
+			if len(d) >= 3 {
+				tx = tx.Where(
+					"(LOWER(contact_name) LIKE ? OR LOWER(contact_j_id) LIKE ? OR regexp_replace(contact_j_id, '[^0-9]', '', 'g') LIKE ?)",
+					like, like, "%"+d+"%",
+				)
+			} else {
+				tx = tx.Where("LOWER(contact_name) LIKE ? OR LOWER(contact_j_id) LIKE ?", like, like)
+			}
 		}
 
 		var rows []model.Conversation
