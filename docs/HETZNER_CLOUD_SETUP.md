@@ -56,3 +56,26 @@ Referência rápida para decisões na consola ao criar o servidor. Alinhado ao p
 5. **Placement groups:** ignorar com um único servidor; só relevante com vários servidores e requisitos de HA no hardware.
 6. **Labels:** opcional; vazio é perfeito. Usa só se quiseres etiquetas na consola ou para futura organização.
 7. **Cloud config:** opcional; vazio para começar por SSH e configurar depois (Coolify/Docker).
+
+## Frontend no PC + API na Coolify
+
+1. No **Coolify** (variáveis do serviço da API), `CORS_ALLOW_ORIGINS` tem de incluir `http://localhost:5173` (origem do Vite).
+2. No PC: copia `apps/web/.env.example` para `apps/web/.env` e usa a **Opção B** comentada no ficheiro: `VITE_API_BASE_URL` e `VITE_WS_URL` com o **domínio público** da API (Coolify → Domains), com sufixo `/api/v1` e WebSocket em `/ws`. Se a API for **HTTPS**, usa `wss://` em `VITE_WS_URL`.
+3. Arranca só o front: `pnpm dev` (ou o comando do monorepo) em `apps/web` — Evolution e Postgres podem ficar só na cloud se a API já estiver a correr lá.
+
+## Evolution Go — licença (`LICENSE_REQUIRED`)
+
+A imagem **evolution-go** devolve **503** até activares a licença no **Manager**. Com o script [`infra/remote-coolify-evolution-bootstrap.sh`](../infra/remote-coolify-evolution-bootstrap.sh) (porta host **8081**), abre no browser:
+
+`http://<IP_DO_VPS>:8081/manager/login`
+
+Indica **URL da API** = `http://<IP_DO_VPS>:8081` e o **token** = o mesmo valor que `GLOBAL_API_KEY` / `EVOLUTION_API_KEY` na Coolify. O estado fica na BD (`evogo_*`); a API Go continua a usar `EVOLUTION_BASE_URL=http://wa-saas-evolution:8080` na rede Docker.
+
+## Frontend no Vercel + API na Coolify
+
+Quando o UI estiver em **produção ou preview** no Vercel, cada URL do browser é uma **origem** distinta: tens de a **incluir** em `CORS_ALLOW_ORIGINS` na API (vírgula, sem espaços obrigatórios — o backend faz trim).
+
+- **Produção:** após o primeiro deploy, adiciona por exemplo `https://teu-projeto.vercel.app` (ou o teu domínio custom) à lista, **redeploy** da API.
+- **Previews** (`*.vercel.app`): URLs mudam por branch; vê estratégia (staging vs lista manual) em [`docs/DEPLOY_VERCEL.md`](./DEPLOY_VERCEL.md).
+
+Guia completo (Root Directory `apps/web`, `VITE_*`, matriz Dev/Preview/Prod): [`docs/DEPLOY_VERCEL.md`](./DEPLOY_VERCEL.md).

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { History, Link2, QrCode, RefreshCw, Smartphone, Trash2 } from 'lucide-react'
 import { api, unwrapEnvelope } from '@/lib/api'
@@ -72,6 +72,8 @@ export default function Instances() {
 
   const [qrOpen, setQrOpen] = useState(false)
   const [qrForId, setQrForId] = useState<string | null>(null)
+  /** Status da linha no momento em que se abriu o modal (evita toast falso se a lista estava desactualizada). */
+  const statusWhenQrModalOpenedRef = useRef<InstanceRow['status'] | null>(null)
   type QrPanel = {
     phase: 'loading' | 'image' | 'pairing_only' | 'already_connected' | 'error'
     src: string | null
@@ -271,6 +273,27 @@ export default function Instances() {
     return () => clearInterval(t)
   }, [qrOpen, qrForId, qc])
 
+  /**
+   * Quando o utilizador escaneia o QR, o refetch traz `connected` — fecha o modal e confirma com toast.
+   * Só dispara se ao abrir o modal o status **não** era já `connected` (pareamento real qr_pending/disconnected → connected).
+   */
+  useEffect(() => {
+    if (!qrOpen || !qrForId) return
+    const row = data.find((r) => r.id === qrForId)
+    if (!row || row.status !== 'connected') return
+    if (qrPanel.phase !== 'image' && qrPanel.phase !== 'pairing_only') return
+    const openedAs = statusWhenQrModalOpenedRef.current
+    if (openedAs === 'connected') return
+    const label = row.name?.trim() || 'Instância'
+    toast.success(`WhatsApp ligado com sucesso (${label}).`, {
+      id: `instance-qr-paired-${qrForId}`,
+    })
+    setQrOpen(false)
+    setQrForId(null)
+    setQrPanel({ phase: 'loading', src: null, pairing: null, hint: null })
+    statusWhenQrModalOpenedRef.current = null
+  }, [qrOpen, qrForId, data, qrPanel.phase])
+
   useEffect(() => {
     if (error) {
       toast.error(
@@ -442,6 +465,7 @@ export default function Instances() {
               if (!o) {
                 setQrForId(null)
                 setQrPanel({ phase: 'loading', src: null, pairing: null, hint: null })
+                statusWhenQrModalOpenedRef.current = null
               }
             }}
           >
@@ -600,6 +624,7 @@ export default function Instances() {
                         variant="outline"
                         size="sm"
                         onClick={() => {
+                          statusWhenQrModalOpenedRef.current = row.status
                           setQrForId(row.id)
                           setQrOpen(true)
                         }}

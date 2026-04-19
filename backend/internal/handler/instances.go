@@ -119,15 +119,26 @@ func startOfTodayUTC() time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
 }
 
+// mapEvolutionStatus alinha estado Evolution (string + flag) ao modelo da app.
+// Regras: (1) "disconnected" contém a substring "connected" — nunca usar Contains("connected") solto.
+// (2) Estados de QR / pareamento vêm muitas vezes com Connected=false — tratar antes de "desligado".
 func mapEvolutionStatus(s, conn string) string {
-	x := strings.ToLower(strings.TrimSpace(s + " " + conn))
-	if strings.Contains(x, "open") || strings.Contains(x, "connected") {
-		return "connected"
+	status := strings.ToLower(strings.TrimSpace(s))
+	connL := strings.ToLower(strings.TrimSpace(conn))
+
+	if strings.Contains(status, "qr") || strings.Contains(status, "pair") {
+		return "qr_pending"
 	}
-	if strings.Contains(x, "close") || strings.Contains(x, "disconnect") {
+	if connL == "disconnected" || status == "close" || strings.Contains(status, "disconnect") {
 		return "disconnected"
 	}
-	if strings.Contains(x, "connect") || strings.Contains(x, "qr") {
+	if connL == "connected" {
+		return "connected"
+	}
+	if status == "open" || strings.Contains(status, " open") {
+		return "connected"
+	}
+	if strings.Contains(status, "connect") {
 		return "qr_pending"
 	}
 	return "qr_pending"
