@@ -101,7 +101,7 @@ export default function Flows() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Fluxos</h1>
           <p className="text-sm text-text-muted">
-            Define produtos, serviços, horários, links e notas por fluxo. Conteúdo publicado entra na base de conhecimento do agente de WhatsApp.
+            Define produtos, serviços, horários, links e notas por fluxo. Publicado, o conteúdo entra na base de conhecimento (agente de WhatsApp ou, sem agente, conhecimento geral do workspace).
           </p>
         </div>
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -187,7 +187,7 @@ export default function Flows() {
 
         <div className="rounded-xl border border-border bg-card p-6 min-h-[280px] flex flex-col justify-center">
           <p className="text-sm text-text-muted text-center max-w-sm mx-auto">
-            Clica num fluxo à esquerda para editar produtos, serviços, horários, links e notas. Publica o fluxo e associa-o ao agente de auto-resposta para o modelo usar esta informação.
+            Clica num fluxo à esquerda para editar produtos, serviços, horários, links e notas. Publica o fluxo; podes ligar ao agente de auto-resposta ou deixar sem agente (conhecimento geral).
           </p>
         </div>
       </div>

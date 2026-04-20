@@ -214,7 +214,8 @@ export default function FlowDetail() {
           <div>
             <h1 className="text-2xl font-bold text-text-primary">Editar fluxo</h1>
             <p className="text-sm text-text-muted">
-              Conhecimento usado pelo agente quando o fluxo está <strong>publicado</strong> e ligado ao mesmo agente da auto-resposta WhatsApp.
+              Conhecimento usado quando o fluxo está <strong>publicado</strong>: entra na auto-resposta se o fluxo estiver ligado ao agente de WhatsApp{' '}
+              <em>ou</em> se o agente não estiver definido (conhecimento geral do workspace).
             </p>
           </div>
         </div>

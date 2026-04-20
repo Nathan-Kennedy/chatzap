@@ -66,8 +66,15 @@ func ValidateFlowKnowledge(k *model.FlowKnowledge) error {
 		if strings.TrimSpace(p.Nome) == "" && strings.TrimSpace(p.Descricao) == "" && strings.TrimSpace(p.PrecoReferencia) == "" {
 			continue // linha vazia ignorada
 		}
-		if err := checkLen("produtos["+strconv.Itoa(i)+"].nome", p.Nome, 1, maxNameLen); err != nil {
-			return err
+		if strings.TrimSpace(p.Nome) != "" {
+			if err := checkLen("produtos["+strconv.Itoa(i)+"].nome", p.Nome, 1, maxNameLen); err != nil {
+				return err
+			}
+		} else {
+			// sem nome: exige descrição ou preço para a linha fazer sentido
+			if strings.TrimSpace(p.Descricao) == "" && strings.TrimSpace(p.PrecoReferencia) == "" {
+				return fmt.Errorf("produtos[%d]: preencha nome ou (descrição / preço)", i)
+			}
 		}
 		if err := checkLenOpt("produtos["+strconv.Itoa(i)+"].descricao", p.Descricao, maxDescLen); err != nil {
 			return err
@@ -83,8 +90,14 @@ func ValidateFlowKnowledge(k *model.FlowKnowledge) error {
 		if strings.TrimSpace(s.Nome) == "" && strings.TrimSpace(s.Descricao) == "" && strings.TrimSpace(s.DuracaoEstimada) == "" {
 			continue
 		}
-		if err := checkLen("servicos["+strconv.Itoa(i)+"].nome", s.Nome, 1, maxNameLen); err != nil {
-			return err
+		if strings.TrimSpace(s.Nome) != "" {
+			if err := checkLen("servicos["+strconv.Itoa(i)+"].nome", s.Nome, 1, maxNameLen); err != nil {
+				return err
+			}
+		} else {
+			if strings.TrimSpace(s.Descricao) == "" && strings.TrimSpace(s.DuracaoEstimada) == "" {
+				return fmt.Errorf("servicos[%d]: preencha nome ou (descrição / duração)", i)
+			}
 		}
 		if err := checkLenOpt("servicos["+strconv.Itoa(i)+"].descricao", s.Descricao, maxDescLen); err != nil {
 			return err
@@ -177,17 +190,26 @@ func FormatFlowKnowledgeForPrompt(flowName string, k model.FlowKnowledge) string
 	if len(k.Produtos) > 0 {
 		body.WriteString("Produtos:\n")
 		for _, p := range k.Produtos {
-			line := strings.TrimSpace(p.Nome)
-			if line == "" {
+			nome := strings.TrimSpace(p.Nome)
+			desc := strings.TrimSpace(p.Descricao)
+			pr := strings.TrimSpace(p.PrecoReferencia)
+			if nome == "" && desc == "" && pr == "" {
 				continue
 			}
-			body.WriteString("- ")
-			body.WriteString(line)
-			if d := strings.TrimSpace(p.Descricao); d != "" {
-				body.WriteString(" — ")
-				body.WriteString(d)
+			if nome == "" {
+				if desc != "" {
+					nome = firstLineUpToRunes(desc, 120)
+				} else {
+					nome = "Produto (ver detalhes)"
+				}
 			}
-			if pr := strings.TrimSpace(p.PrecoReferencia); pr != "" {
+			body.WriteString("- ")
+			body.WriteString(nome)
+			if desc != "" {
+				body.WriteString(" — ")
+				body.WriteString(desc)
+			}
+			if pr != "" {
 				body.WriteString(" (ref. ")
 				body.WriteString(pr)
 				body.WriteString(")")
@@ -198,17 +220,26 @@ func FormatFlowKnowledgeForPrompt(flowName string, k model.FlowKnowledge) string
 	if len(k.Servicos) > 0 {
 		body.WriteString("Serviços:\n")
 		for _, sv := range k.Servicos {
-			line := strings.TrimSpace(sv.Nome)
-			if line == "" {
+			nome := strings.TrimSpace(sv.Nome)
+			desc := strings.TrimSpace(sv.Descricao)
+			du := strings.TrimSpace(sv.DuracaoEstimada)
+			if nome == "" && desc == "" && du == "" {
 				continue
 			}
-			body.WriteString("- ")
-			body.WriteString(line)
-			if d := strings.TrimSpace(sv.Descricao); d != "" {
-				body.WriteString(" — ")
-				body.WriteString(d)
+			if nome == "" {
+				if desc != "" {
+					nome = firstLineUpToRunes(desc, 120)
+				} else {
+					nome = "Serviço (ver detalhes)"
+				}
 			}
-			if du := strings.TrimSpace(sv.DuracaoEstimada); du != "" {
+			body.WriteString("- ")
+			body.WriteString(nome)
+			if desc != "" {
+				body.WriteString(" — ")
+				body.WriteString(desc)
+			}
+			if du != "" {
 				body.WriteString(" (duração ref. ")
 				body.WriteString(du)
 				body.WriteString(")")
@@ -291,12 +322,15 @@ func FormatFlowKnowledgeForPrompt(flowName string, k model.FlowKnowledge) string
 }
 
 // AggregatedFlowKnowledgeForAgent concatena fluxos publicados do agente (ordem updated_at ASC).
+// Inclui fluxos com agent_id = agentID e também fluxos publicados com agent_id NULL (conhecimento
+// «geral» do workspace), para não perder produtos quando o utilizador não ligou o fluxo a um agente.
 func AggregatedFlowKnowledgeForAgent(db *gorm.DB, workspaceID, agentID uuid.UUID) (string, error) {
 	if db == nil || workspaceID == uuid.Nil || agentID == uuid.Nil {
 		return "", nil
 	}
 	var flows []model.Flow
-	if err := db.Where("workspace_id = ? AND agent_id = ? AND published = ?", workspaceID, agentID, true).
+	if err := db.Where("workspace_id = ? AND published = ?", workspaceID, true).
+		Where("agent_id = ? OR agent_id IS NULL", agentID).
 		Order("updated_at ASC").Find(&flows).Error; err != nil {
 		return "", err
 	}
@@ -333,6 +367,26 @@ func truncateRunes(s string, max int) string {
 		return string(r[:max]) + "… [truncado]"
 	}
 	return s
+}
+
+// firstLineUpToRunes primeira linha do texto (ou truncado) para usar como título quando falta o nome.
+func firstLineUpToRunes(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	line := s
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		line = strings.TrimSpace(s[:i])
+	}
+	if max <= 0 {
+		return line
+	}
+	r := []rune(line)
+	if len(r) > max {
+		return string(r[:max]) + "…"
+	}
+	return line
 }
 
 // FlowKnowledgePromptPreview bloco formatado para um único fluxo (GET detalhe).

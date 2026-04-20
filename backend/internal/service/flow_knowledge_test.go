@@ -73,3 +73,33 @@ func TestAggregatedFlowKnowledgeForAgent_onlyPublished(t *testing.T) {
 		t.Fatalf("expected only published flow knowledge, got: %s", s)
 	}
 }
+
+func TestAggregatedFlowKnowledgeForAgent_includesPublishedWithNullAgent(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.Flow{}, &model.AIAgent{}); err != nil {
+		t.Fatal(err)
+	}
+	ws := uuid.New()
+	ag := uuid.New()
+	a := model.AIAgent{ID: ag, WorkspaceID: ws, Name: "Bot", Provider: "gemini", Model: "m"}
+	if err := db.Create(&a).Error; err != nil {
+		t.Fatal(err)
+	}
+	f := model.Flow{
+		WorkspaceID: ws, Name: "Loja", Published: true, AgentID: nil,
+		KnowledgeJSON: `{"produtos":[{"nome":"Saco de cimento","descricao":"50kg","preco_referencia":"R$ 35"}]}`,
+	}
+	if err := db.Create(&f).Error; err != nil {
+		t.Fatal(err)
+	}
+	s, err := AggregatedFlowKnowledgeForAgent(db, ws, ag)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(s, "Saco de cimento") || !strings.Contains(s, "35") {
+		t.Fatalf("expected null-agent published flow in knowledge: %s", s)
+	}
+}

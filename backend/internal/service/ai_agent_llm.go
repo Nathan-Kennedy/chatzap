@@ -20,7 +20,8 @@ func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActiv
 	var b strings.Builder
 	if fk := strings.TrimSpace(flowKnowledge); fk != "" {
 		b.WriteString("Base de conhecimento (fluxos publicados do negócio). ")
-		b.WriteString("Trata este bloco como fonte principal: usa-o em todas as respostas automáticas e manuais sobre produtos, preços, serviços, horários, links e dados concretos do negócio; não contradigas o que aqui estiver definido nem inventes detalhes que não apareçam aqui.\n\n")
+		b.WriteString("Trata este bloco como fonte principal: usa-o em todas as respostas automáticas e manuais sobre produtos, preços, serviços, horários, links e dados concretos do negócio; não contradigas o que aqui estiver definido nem inventes detalhes que não apareçam aqui. ")
+		b.WriteString("Se existirem linhas em «Produtos:» ou «Serviços:», considera que esses itens estão disponíveis; quando perguntarem se há produtos à venda ou o que vendem, confirma e exemplifica com base na lista abaixo — não digas que não há catálogo nem stock se a lista não estiver vazia.\n\n")
 		b.WriteString(fk)
 		b.WriteString("\n\n---\n\n")
 	}
