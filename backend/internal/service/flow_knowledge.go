@@ -22,11 +22,11 @@ const (
 	maxFlowImages                   = 40
 	maxFlowTimeSlots                = 50
 	maxNameLen                      = 256
-	maxDescLen                      = 4000
+	maxDescLen                      = 16000 // descrição de produto/serviço (textos longos / listagens)
 	maxPrecoLen                     = 64
 	maxDuracaoLen                   = 128
 	maxSlotsTextoLen                = 8000
-	maxObsHorarioLen                = 4000
+	maxObsHorarioLen                = 8000
 	maxNotasGeraisLen               = 16000
 	maxURLLen                       = 2048
 	maxRotuloLen                    = 256

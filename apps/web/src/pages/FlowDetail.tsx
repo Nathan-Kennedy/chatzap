@@ -32,7 +32,21 @@ import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
+import type { FieldErrors } from 'react-hook-form'
+import { cn } from '@/lib/utils'
 import { ApiEnvelopeError } from '@/types/api'
+
+function firstValidationMessage(errors: FieldErrors): string | null {
+  for (const v of Object.values(errors)) {
+    if (!v) continue
+    if (typeof v === 'object' && v !== null && 'message' in v && typeof (v as { message?: string }).message === 'string') {
+      return (v as { message: string }).message
+    }
+    const nested = firstValidationMessage(v as FieldErrors)
+    if (nested) return nested
+  }
+  return null
+}
 
 type FlowDetailDTO = {
   id: string
@@ -99,6 +113,7 @@ export default function FlowDetail() {
 
   const form = useForm<FlowEditFormValues>({
     resolver: zodResolver(flowEditFormSchema),
+    shouldUnregister: false,
     defaultValues: {
       name: '',
       description: '',
@@ -228,71 +243,127 @@ export default function FlowDetail() {
       <form
         id="flow-edit-form"
         className="space-y-6"
-        onSubmit={form.handleSubmit((v) => saveMut.mutate(v))}
+        onSubmit={form.handleSubmit(
+          (v) => saveMut.mutate(v),
+          (errors) => {
+            const msg = firstValidationMessage(errors)
+            toast.error(
+              msg
+                ? `${msg} (verifica também os outros separadores se o campo não estiver visível)`
+                : 'Há erros no formulário. Verifica nome, tamanhos máximos e os separadores Produtos, Horários, etc.'
+            )
+          }
+        )}
       >
-        <Card className="bg-card border-border">
-          <CardHeader>
-            <CardTitle>Informações gerais</CardTitle>
-            <CardDescription>Nome, agente e estado de publicação.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 max-w-xl">
-            <div className="space-y-2">
-              <Label htmlFor="name">Nome</Label>
-              <Input id="name" className="bg-background" {...form.register('name')} />
-              {form.formState.errors.name && (
-                <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">Descrição</Label>
-              <Textarea id="description" rows={2} className="bg-background" {...form.register('description')} />
-            </div>
-            <div className="space-y-2">
-              <Label>Agente</Label>
-              <Select
-                value={form.watch('agent_id') || '__none__'}
-                onValueChange={(v) => form.setValue('agent_id', v === '__none__' ? '' : v, { shouldDirty: true })}
-              >
-                <SelectTrigger className="bg-background">
-                  <SelectValue placeholder="Nenhum" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhum</SelectItem>
-                  {(agentsQuery.data ?? []).map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-text-muted">
-                Para remover o vínculo, escolha «Nenhum» e guarda.
-              </p>
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-              <div>
-                <p className="text-sm font-medium">Publicado</p>
-                <p className="text-xs text-text-muted">Só fluxos publicados entram na base de conhecimento do modelo.</p>
-              </div>
-              <Switch
-                checked={form.watch('published')}
-                onCheckedChange={(v) => form.setValue('published', v, { shouldDirty: true })}
-              />
-            </div>
-          </CardContent>
-        </Card>
+        <p className="text-sm text-text-muted rounded-lg border border-border bg-muted/20 px-4 py-3">
+          <strong className="text-text-primary">Como funciona:</strong> não há «nós» de fluxograma — cada separador é uma{' '}
+          <strong>secção de conhecimento</strong> (produtos, horários, etc.) para o agente no WhatsApp quando o fluxo está{' '}
+          <strong>publicado</strong> e ligado ao agente de auto-resposta.{' '}
+          <strong className="text-amber-200/90">Clica em «Guardar» no fim (não há gravação automática).</strong> Se aparecer erro em toast,
+          corrige o campo indicado (pode estar noutro separador).
+        </p>
 
-        <Tabs defaultValue="produtos" className="w-full">
-          <TabsList className="flex flex-wrap h-auto gap-1">
-            <TabsTrigger value="produtos">Produtos</TabsTrigger>
-            <TabsTrigger value="servicos">Serviços</TabsTrigger>
-            <TabsTrigger value="horarios">Horários</TabsTrigger>
-            <TabsTrigger value="links">Links</TabsTrigger>
-            <TabsTrigger value="imagens">Imagens</TabsTrigger>
-            <TabsTrigger value="notas">Notas</TabsTrigger>
+        <Tabs defaultValue="geral" className="w-full">
+          <TabsList className="flex w-full flex-wrap h-auto gap-1 justify-start bg-muted/40 p-1.5 rounded-lg border border-border">
+            <TabsTrigger
+              value="geral"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Geral
+            </TabsTrigger>
+            <TabsTrigger
+              value="produtos"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Produtos
+            </TabsTrigger>
+            <TabsTrigger
+              value="servicos"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Serviços
+            </TabsTrigger>
+            <TabsTrigger
+              value="horarios"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Horários
+            </TabsTrigger>
+            <TabsTrigger
+              value="links"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Links
+            </TabsTrigger>
+            <TabsTrigger
+              value="imagens"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Imagens
+            </TabsTrigger>
+            <TabsTrigger
+              value="notas"
+              className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+            >
+              Notas
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="produtos" className="mt-4 space-y-3">
+          <TabsContent value="geral" forceMount className={cn('mt-4', 'data-[state=inactive]:hidden')}>
+            <Card className="bg-card border-border">
+              <CardHeader>
+                <CardTitle>Informações gerais</CardTitle>
+                <CardDescription>Nome, agente e estado de publicação.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4 max-w-xl">
+                <div className="space-y-2">
+                  <Label htmlFor="name">Nome</Label>
+                  <Input id="name" className="bg-background" {...form.register('name')} />
+                  {form.formState.errors.name && (
+                    <p className="text-xs text-destructive">{form.formState.errors.name.message}</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="description">Descrição</Label>
+                  <Textarea id="description" rows={2} className="bg-background" {...form.register('description')} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Agente</Label>
+                  <Select
+                    value={form.watch('agent_id') || '__none__'}
+                    onValueChange={(v) => form.setValue('agent_id', v === '__none__' ? '' : v, { shouldDirty: true })}
+                  >
+                    <SelectTrigger className="bg-background">
+                      <SelectValue placeholder="Nenhum" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Nenhum</SelectItem>
+                      {(agentsQuery.data ?? []).map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[11px] text-text-muted">
+                    Escolhe o mesmo agente que tem auto-resposta WhatsApp para o modelo usar este conhecimento.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+                  <div>
+                    <p className="text-sm font-medium">Publicado</p>
+                    <p className="text-xs text-text-muted">Só fluxos publicados entram na base de conhecimento do modelo.</p>
+                  </div>
+                  <Switch
+                    checked={form.watch('published')}
+                    onCheckedChange={(v) => form.setValue('published', v, { shouldDirty: true })}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="produtos" forceMount className={cn('mt-4 space-y-3', 'data-[state=inactive]:hidden')}>
             {produtosFA.fields.map((field, i) => (
               <Card key={field.id} className="bg-sidebar/50 border-border">
                 <CardContent className="pt-4 space-y-2">
@@ -318,7 +389,7 @@ export default function FlowDetail() {
             </Button>
           </TabsContent>
 
-          <TabsContent value="servicos" className="mt-4 space-y-3">
+          <TabsContent value="servicos" forceMount className={cn('mt-4 space-y-3', 'data-[state=inactive]:hidden')}>
             {servicosFA.fields.map((field, i) => (
               <Card key={field.id} className="bg-sidebar/50 border-border">
                 <CardContent className="pt-4 space-y-2">
@@ -344,7 +415,7 @@ export default function FlowDetail() {
             </Button>
           </TabsContent>
 
-          <TabsContent value="horarios" className="mt-4 space-y-4">
+          <TabsContent value="horarios" forceMount className={cn('mt-4 space-y-4', 'data-[state=inactive]:hidden')}>
             <div className="space-y-2">
               <Label>Disponibilidade (texto livre)</Label>
               <Textarea
@@ -402,7 +473,7 @@ export default function FlowDetail() {
             </Button>
           </TabsContent>
 
-          <TabsContent value="links" className="mt-4 space-y-3">
+          <TabsContent value="links" forceMount className={cn('mt-4 space-y-3', 'data-[state=inactive]:hidden')}>
             {linksFA.fields.map((field, i) => (
               <Card key={field.id} className="bg-sidebar/50 border-border">
                 <CardContent className="pt-4 flex flex-wrap gap-2">
@@ -420,7 +491,7 @@ export default function FlowDetail() {
             </Button>
           </TabsContent>
 
-          <TabsContent value="imagens" className="mt-4 space-y-3">
+          <TabsContent value="imagens" forceMount className={cn('mt-4 space-y-3', 'data-[state=inactive]:hidden')}>
             <p className="text-xs text-text-muted">URLs públicas (CDN, drive partilhado, etc.). Upload de ficheiros virá numa fase seguinte.</p>
             {imagensFA.fields.map((field, i) => (
               <Card key={field.id} className="bg-sidebar/50 border-border">
@@ -439,7 +510,7 @@ export default function FlowDetail() {
             </Button>
           </TabsContent>
 
-          <TabsContent value="notas" className="mt-4 space-y-2">
+          <TabsContent value="notas" forceMount className={cn('mt-4 space-y-2', 'data-[state=inactive]:hidden')}>
             <Label>Notas gerais / FAQ / políticas</Label>
             <Textarea rows={12} className="bg-background font-mono text-sm" {...form.register('knowledge.notas_gerais')} />
           </TabsContent>

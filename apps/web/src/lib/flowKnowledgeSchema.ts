@@ -11,20 +11,20 @@ export const flowKnowledgeSchema = z.object({
   produtos: z.array(
     z.object({
       nome: z.string().max(256),
-      descricao: z.string().max(4000),
+      descricao: z.string().max(16000),
       preco_referencia: z.string().max(64),
     })
   ),
   servicos: z.array(
     z.object({
       nome: z.string().max(256),
-      descricao: z.string().max(4000),
+      descricao: z.string().max(16000),
       duracao_estimada: z.string().max(128),
     })
   ),
   disponibilidade: z.object({
     slots_texto: z.string().max(8000),
-    observacoes_horario: z.string().max(4000),
+    observacoes_horario: z.string().max(8000),
     slots: z.array(flowTimeSlotSchema),
   }),
   links: z.array(

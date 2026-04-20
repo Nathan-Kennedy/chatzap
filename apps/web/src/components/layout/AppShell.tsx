@@ -274,7 +274,7 @@ export default function AppShell() {
             </div>
           </header>
 
-          <main className="flex-1 overflow-hidden bg-background relative flex flex-col min-h-0">
+          <main className="flex-1 min-h-0 overflow-y-auto bg-background relative flex flex-col">
             <Outlet />
           </main>
         </div>
