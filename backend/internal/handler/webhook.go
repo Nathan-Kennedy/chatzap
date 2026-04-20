@@ -293,6 +293,11 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 					firstBubble = false
 				}
 			}()
+		} else if d.Cfg.AutoReplyEnabled && llm == nil && ok && inbound.Text != "" && !inbound.FromMe && conversationID != uuid.Nil {
+			d.Log.Warn("auto-reply: sem LLM — inbox actualizada mas nenhuma resposta gerada. Defina GEMINI_API_KEY ou OPENAI_API_KEY no Coolify, ou guarde a API key no agente com «usar no WhatsApp» activo",
+				zap.String("instance", instanceParam),
+				zap.String("conversation_id", conversationID.String()),
+			)
 		}
 
 		return JSONSuccess(c, fiber.Map{
