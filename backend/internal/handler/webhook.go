@@ -134,6 +134,10 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 			} else if waLLM != nil {
 				llm = waLLM
 			}
+		} else if workspaceID != uuid.Nil && d.Cfg.AutoReplyEnabled && strings.TrimSpace(d.Cfg.AppEncryptionKey) == "" {
+			d.Log.Warn("auto-reply: APP_ENCRYPTION_KEY vazio na API — não é possível usar a API key guardada no agente (frontend). Defina a mesma chave no Coolify que usaste quando gravaste os agentes",
+				zap.String("workspace_id", workspaceID.String()),
+			)
 		}
 
 		if d.Cfg.AutoReplyEnabled && llm != nil && ok && inbound.Text != "" && !inbound.FromMe && conversationID != uuid.Nil {
