@@ -238,7 +238,8 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 				}
 				if agentRow != nil && agentRow.VoiceReplyEnabled &&
 					service.NormalizeTTSProvider(agentRow.TTSProvider) != service.TTSProviderNone {
-					d.Log.Info("auto-reply: tentativa de resposta em voz",
+					// Warn (não Info): com LOG_LEVEL=warn no Coolify continua visível nos exports de log.
+					d.Log.Warn("auto-reply: tentativa de resposta em voz",
 						zap.String("tts_provider", agentRow.TTSProvider),
 						zap.Bool("has_app_encryption_key", strings.TrimSpace(d.Cfg.AppEncryptionKey) != ""),
 					)
@@ -248,6 +249,17 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 							zap.Error(err))
 					} else {
 						return
+					}
+				} else if agentRow != nil {
+					ttsN := service.NormalizeTTSProvider(agentRow.TTSProvider)
+					switch {
+					case !agentRow.VoiceReplyEnabled && ttsN != service.TTSProviderNone:
+						d.Log.Warn("auto-reply: só texto — na BD há tts_provider mas voice_reply_enabled=false; ligue «Responder em áudio (TTS)» e guarde",
+							zap.String("tts_provider", agentRow.TTSProvider),
+							zap.String("agent_id", agentRow.ID.String()))
+					case agentRow.VoiceReplyEnabled && ttsN == service.TTSProviderNone:
+						d.Log.Warn("auto-reply: só texto — voice_reply_enabled=true mas tts_provider inválido/none; escolha Gemini TTS e guarde",
+							zap.String("agent_id", agentRow.ID.String()))
 					}
 				}
 				chunks := service.SplitReplyIntoMessageChunks(reply, 0)
