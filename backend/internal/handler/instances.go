@@ -34,18 +34,38 @@ type importInstanceBody struct {
 	DisplayName            string `json:"display_name"`
 }
 
+func evolutionWebhookOpts(cfg *config.Config) *service.SetInstanceWebhookOpts {
+	if cfg == nil {
+		return nil
+	}
+	s := strings.TrimSpace(cfg.WebhookSharedSecret)
+	if s == "" {
+		return nil
+	}
+	return &service.SetInstanceWebhookOpts{
+		Headers: map[string]string{"X-Webhook-Secret": s},
+	}
+}
+
 func syncEvolutionWebhook(ctx context.Context, log *zap.Logger, cfg *config.Config, ev *service.EvolutionClient, row *model.WhatsAppInstance) {
 	u := cfg.WebhookURLForWhatsAppInstance(row.EvolutionInstanceName)
 	if u == "" || ev == nil {
 		return
 	}
-	if err := ev.SetInstanceWebhook(ctx, row.EvolutionInstanceName, row.EvolutionInstanceToken, u); err != nil {
+	opts := evolutionWebhookOpts(cfg)
+	if err := ev.SetInstanceWebhook(ctx, row.EvolutionInstanceName, row.EvolutionInstanceToken, u, opts); err != nil {
 		log.Warn("evolution webhook sync falhou",
 			zap.String("instance", row.EvolutionInstanceName),
 			zap.String("webhook_url", u),
 			zap.Error(err),
 		)
+		return
 	}
+	log.Info("evolution webhook configurado",
+		zap.String("instance", row.EvolutionInstanceName),
+		zap.String("webhook_url", u),
+		zap.Int("events", len(service.EvolutionWebhookDefaultEvents)),
+	)
 }
 
 func mapInstanceRow(m *model.WhatsAppInstance, messagesToday int64) fiber.Map {
@@ -325,7 +345,7 @@ func HandleSyncInstanceWebhook(log *zap.Logger, db *gorm.DB, cfg *config.Config,
 		if u == "" {
 			return JSONError(c, fiber.StatusInternalServerError, "config_error", "PUBLIC_WEBHOOK_BASE_URL inválido", nil)
 		}
-		if err := ev.SetInstanceWebhook(ctx, row.EvolutionInstanceName, row.EvolutionInstanceToken, u); err != nil {
+		if err := ev.SetInstanceWebhook(ctx, row.EvolutionInstanceName, row.EvolutionInstanceToken, u, evolutionWebhookOpts(cfg)); err != nil {
 			log.Error("evolution set webhook", zap.Error(err))
 			return JSONError(c, fiber.StatusBadGateway, "evolution_error", err.Error(), nil)
 		}

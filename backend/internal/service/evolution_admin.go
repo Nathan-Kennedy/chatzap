@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -333,31 +334,103 @@ func (c *EvolutionClient) ConnectionState(ctx context.Context, instanceToken str
 }
 
 type setWebhookRequest struct {
-	Enabled         bool     `json:"enabled"`
-	URL             string   `json:"url"`
-	WebhookByEvents bool     `json:"webhookByEvents"`
-	WebhookBase64   bool     `json:"webhookBase64"`
-	Events          []string `json:"events"`
+	Enabled         bool              `json:"enabled"`
+	URL             string            `json:"url"`
+	WebhookByEvents bool              `json:"webhookByEvents"`
+	WebhookBase64   bool              `json:"webhookBase64"`
+	Events          []string          `json:"events"`
+	Headers         map[string]string `json:"headers,omitempty"`
 }
 
-// SetInstanceWebhook POST /webhook/set/{instance} com apikey = token da instância (Evolution API / Go).
-func (c *EvolutionClient) SetInstanceWebhook(ctx context.Context, instanceName, instanceToken, webhookURL string) error {
+// SetInstanceWebhookOpts opções extra para POST /webhook/set/{instance}.
+type SetInstanceWebhookOpts struct {
+	// Headers enviados em cada POST do Evolution para a tua API (ex.: X-Webhook-Secret).
+	Headers map[string]string
+}
+
+// evolutionGoConnectBody Evolution Go (docs.evolutionfoundation.com.br): POST /instance/connect
+// com header instanceId = UUID da instância (não o nome técnico).
+type evolutionGoConnectBody struct {
+	WebhookURL string   `json:"webhookUrl"`
+	Subscribe  []string `json:"subscribe"`
+	Immediate  bool     `json:"immediate"`
+}
+
+// FindInstanceRemoteID devolve o campo `id` da listagem /instance/all para o nome da instância.
+func (c *EvolutionClient) FindInstanceRemoteID(ctx context.Context, instanceName string) (string, error) {
+	name := strings.TrimSpace(instanceName)
+	if name == "" {
+		return "", fmt.Errorf("instance name vazio")
+	}
+	list, err := c.FetchInstances(ctx)
+	if err != nil {
+		return "", err
+	}
+	want := strings.ToLower(name)
+	for _, ins := range list {
+		if strings.ToLower(strings.TrimSpace(ins.Name)) == want {
+			id := strings.TrimSpace(ins.InstanceID)
+			if id == "" {
+				return "", fmt.Errorf("evolution: instância %q sem id remoto", name)
+			}
+			return id, nil
+		}
+	}
+	return "", fmt.Errorf("evolution: instância %q não encontrada em /instance/all", name)
+}
+
+// setWebhookEvolutionGoConnect documentação Evolution Go — actualiza webhook no painel.
+func (c *EvolutionClient) setWebhookEvolutionGoConnect(ctx context.Context, remoteInstanceID, webhookURL string) error {
+	remoteInstanceID = strings.TrimSpace(remoteInstanceID)
+	if remoteInstanceID == "" {
+		return fmt.Errorf("instanceId remoto vazio")
+	}
+	u := c.baseURL + "/instance/connect"
+	body, err := json.Marshal(evolutionGoConnectBody{
+		WebhookURL: strings.TrimSpace(webhookURL),
+		Subscribe:  []string{"ALL"},
+		Immediate:  false,
+	})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("apikey", c.apiKey)
+	req.Header.Set("instanceId", remoteInstanceID)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("evolution go connect/webhook %d: %s", resp.StatusCode, string(raw))
+	}
+	return nil
+}
+
+func (c *EvolutionClient) setWebhookNodeAPI(ctx context.Context, instanceName, instanceToken, webhookURL string, opts *SetInstanceWebhookOpts) error {
 	name := strings.TrimSpace(instanceName)
 	if name == "" {
 		return fmt.Errorf("instance name vazio")
 	}
 	u := fmt.Sprintf("%s/webhook/set/%s", c.baseURL, url.PathEscape(name))
-	// Evolution Go / forks podem filtrar por strings diferentes; incluir variantes comuns.
+	events := EvolutionWebhookDefaultEvents
+	var hdr map[string]string
+	if opts != nil && len(opts.Headers) > 0 {
+		hdr = opts.Headers
+	}
 	body, err := json.Marshal(setWebhookRequest{
 		Enabled:         true,
 		URL:             strings.TrimSpace(webhookURL),
 		WebhookByEvents: false,
 		WebhookBase64:   true,
-		Events: []string{
-			"MESSAGES_UPSERT",
-			"messages.upsert",
-			"messages_upsert",
-		},
+		Events:          events,
+		Headers:         hdr,
 	})
 	if err != nil {
 		return err
@@ -380,6 +453,51 @@ func (c *EvolutionClient) SetInstanceWebhook(ctx context.Context, instanceName, 
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("evolution set webhook %d: %s", resp.StatusCode, string(raw))
+	}
+	return nil
+}
+
+// SetInstanceWebhook configura webhook na Evolution.
+// 1) Evolution Go (evoapicloud/evolution-go): POST /instance/connect + header instanceId (UUID) — é o que o manager usa.
+// 2) Fallback Evolution API (Node): POST /webhook/set/{nome} com apikey = token da instância.
+func (c *EvolutionClient) SetInstanceWebhook(ctx context.Context, instanceName, instanceToken, webhookURL string, opts *SetInstanceWebhookOpts) error {
+	name := strings.TrimSpace(instanceName)
+	if name == "" {
+		return fmt.Errorf("instance name vazio")
+	}
+	webhookURL = strings.TrimSpace(webhookURL)
+	if webhookURL == "" {
+		return fmt.Errorf("webhook url vazio")
+	}
+
+	var goErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			t := time.NewTimer(350 * time.Millisecond)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return ctx.Err()
+			case <-t.C:
+			}
+		}
+		rid, ferr := c.FindInstanceRemoteID(ctx, name)
+		if ferr != nil || rid == "" {
+			goErr = ferr
+			continue
+		}
+		if err := c.setWebhookEvolutionGoConnect(ctx, rid, webhookURL); err == nil {
+			return nil
+		} else {
+			goErr = err
+		}
+	}
+
+	if err := c.setWebhookNodeAPI(ctx, name, instanceToken, webhookURL, opts); err != nil {
+		if goErr != nil {
+			return fmt.Errorf("evolution go: %v; evolution node: %w", goErr, err)
+		}
+		return err
 	}
 	return nil
 }

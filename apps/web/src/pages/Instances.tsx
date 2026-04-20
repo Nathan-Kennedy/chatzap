@@ -120,7 +120,7 @@ export default function Instances() {
       return unwrapEnvelope<InstanceRow>(res).data
     },
     onSuccess: () => {
-      toast.success('Instância criada na Evolution')
+      toast.success('Instância criada — webhook e eventos configurados na Evolution')
       setCreateOpen(false)
       setEvoName('')
       setDisplayName('')
@@ -398,6 +398,12 @@ export default function Instances() {
                   />
                   <p className="text-[11px] text-text-muted">
                     Apenas letras minúsculas, números, _ e - (único na Evolution).
+                  </p>
+                  <p className="text-[11px] text-text-muted">
+                    Após criar, a API configura na Evolution o URL do webhook (
+                    <code className="text-[10px]">PUBLIC_WEBHOOK_BASE_URL</code>) e subscreve todos os eventos
+                    suportados (mensagens, ligação, QR, chats, etc.). Não precisas de repetir isso no manager, salvo
+                    falha de rede — aí usa «Sincronizar webhook» na tabela.
                   </p>
                 </div>
                 <div className="space-y-1.5">
