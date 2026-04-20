@@ -27,10 +27,15 @@ func extractWebhookAPIKey(c *fiber.Ctx) string {
 	if json.Unmarshal(c.Body(), &root) != nil {
 		return ""
 	}
-	if raw, ok := root["apikey"]; ok {
-		var key string
-		_ = json.Unmarshal(raw, &key)
-		return strings.TrimSpace(key)
+	for _, field := range []string{"apikey", "instanceToken"} {
+		if raw, ok := root[field]; ok {
+			var key string
+			if json.Unmarshal(raw, &key) == nil {
+				if s := strings.TrimSpace(key); s != "" {
+					return s
+				}
+			}
+		}
 	}
 	return ""
 }
@@ -57,6 +62,12 @@ func webhookAPIKeyValid(key string, cfg *config.Config, db *gorm.DB, instanceSlu
 				if tok != "" && securestring.Equal(key, tok) {
 					return true
 				}
+			}
+		} else if key != "" {
+			// Fallback: slug indisponível (ex.: ordem de middleware) mas o corpo traz instanceToken (Evolution Go).
+			var inst model.WhatsAppInstance
+			if err := db.Where("evolution_instance_token = ?", key).First(&inst).Error; err == nil {
+				return true
 			}
 		}
 	}

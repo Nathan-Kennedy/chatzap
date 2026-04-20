@@ -112,18 +112,21 @@ func main() {
 	app.Get("/media/temp/:token", handler.HandlePublicMediaTemp(db, log))
 	app.Get("/api/v1/meta", handler.HandleMeta(cfg))
 
+	// WebhookAuth na rota (não no Group): assim :instance_id está disponível em c.Params para validar o token da instância.
 	wh := app.Group("/webhooks", limiter.New(limiter.Config{
 		Max:        180,
 		Expiration: 1 * time.Minute,
-	}), middleware.WebhookAuth(cfg, db, log))
-	wh.Post("/whatsapp/:instance_id", handler.HandleWhatsAppWebhook(handler.WebhookDeps{
-		Log:       log,
-		DB:        db,
-		Redis:     rdb,
-		Cfg:       cfg,
-		Evolution: ev,
-		LLM:       llm,
 	}))
+	wh.Post("/whatsapp/:instance_id",
+		middleware.WebhookAuth(cfg, db, log),
+		handler.HandleWhatsAppWebhook(handler.WebhookDeps{
+			Log:       log,
+			DB:        db,
+			Redis:     rdb,
+			Cfg:       cfg,
+			Evolution: ev,
+			LLM:       llm,
+		}))
 
 	auth := app.Group("/api/v1/auth", limiter.New(limiter.Config{Max: 60, Expiration: time.Minute}))
 	auth.Post("/register", handler.HandleRegister(log, db, cfg))
