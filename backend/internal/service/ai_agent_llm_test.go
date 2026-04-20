@@ -36,8 +36,12 @@ func TestComposeAgentSystemPrompt_voiceTTSIncludesHint(t *testing.T) {
 
 func TestComposeAgentSystemPrompt_flowKnowledgeAppended(t *testing.T) {
 	s := ComposeAgentSystemPrompt("A", "R", "Ctx.", false, "## Fluxo X\nProdutos:\n- Item")
-	if !strings.Contains(s, "Base de conhecimento (fluxos publicados):") || !strings.Contains(s, "Produtos:") {
-		t.Fatalf("expected flow block in prompt: %s", s)
+	if !strings.Contains(s, "Base de conhecimento (fluxos publicados do negócio)") || !strings.Contains(s, "Produtos:") {
+		t.Fatalf("expected flow block at start of prompt: %s", s)
+	}
+	// Fluxos devem vir antes do tom geral (prioridade para dados do negócio)
+	if idxFlow := strings.Index(s, "## Fluxo X"); idxFlow < 0 || !strings.Contains(s[idxFlow:], "Brasil") {
+		t.Fatalf("flow block should precede style rules: %s", s)
 	}
 }
 

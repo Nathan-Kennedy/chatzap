@@ -8,14 +8,22 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
+	"wa-saas/backend/internal/config"
 	"wa-saas/backend/internal/cryptoagent"
 	"wa-saas/backend/internal/model"
 )
 
 // ComposeAgentSystemPrompt junta tom base pt-BR + função + contexto do agente.
 // voiceTTSActive: true quando o agente tem «Responder em áudio (TTS)» com provedor válido — evita o LLM negar envio de voz.
+// O bloco de fluxos (quando existir) fica no início para o modelo priorizar produtos, preços e dados do negócio.
 func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActive bool, flowKnowledge string) string {
 	var b strings.Builder
+	if fk := strings.TrimSpace(flowKnowledge); fk != "" {
+		b.WriteString("Base de conhecimento (fluxos publicados do negócio). ")
+		b.WriteString("Trata este bloco como fonte principal: usa-o em todas as respostas automáticas e manuais sobre produtos, preços, serviços, horários, links e dados concretos do negócio; não contradigas o que aqui estiver definido nem inventes detalhes que não apareçam aqui.\n\n")
+		b.WriteString(fk)
+		b.WriteString("\n\n---\n\n")
+	}
 	b.WriteString("Responda sempre em português do Brasil (pt-BR), com tom profissional e cordial. ")
 	b.WriteString("Use frases curtas e naturais, adequadas a conversas no WhatsApp. ")
 	b.WriteString("Usa emojis com parcimónia: evita em várias frases seguidas; no máximo um emoji leve quando fizer sentido, ou nenhum — tom profissional primeiro. ")
@@ -44,10 +52,6 @@ func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActiv
 	if d := strings.TrimSpace(description); d != "" {
 		b.WriteString("Contexto e instruções:\n")
 		b.WriteString(d)
-	}
-	if fk := strings.TrimSpace(flowKnowledge); fk != "" {
-		b.WriteString("\n\nBase de conhecimento (fluxos publicados):\n")
-		b.WriteString(fk)
 	}
 	return strings.TrimSpace(b.String())
 }
@@ -91,6 +95,55 @@ func WorkspaceAutoReplyLLM(db *gorm.DB, encryptionKey string, workspaceID uuid.U
 		return nil, nil
 	}
 	return BuildLLMFromAgent(db, encryptionKey, a)
+}
+
+// modelOrDefault devolve o modelo do agente se preenchido; caso contrário o default de config.
+func modelOrDefault(agentModel, cfgDefault string) string {
+	if s := strings.TrimSpace(agentModel); s != "" {
+		return s
+	}
+	return strings.TrimSpace(cfgDefault)
+}
+
+// AutoReplyLLMWithAgentAndFlowKnowledgeFromEnv monta o mesmo system prompt que BuildLLMFromAgent (perfil + fluxos publicados),
+// mas usando GEMINI_API_KEY / OPENAI_API_KEY do ambiente em vez da chave encriptada do agente.
+// Serve quando o webhook ainda está no LLM global: agente sem api_key na BD, falha de descriptografia, ou APP_ENCRYPTION_KEY vazio
+// — desde que exista chave LLM no .env compatível com o provider do agente.
+func AutoReplyLLMWithAgentAndFlowKnowledgeFromEnv(db *gorm.DB, cfg *config.Config, workspaceID uuid.UUID) LLM {
+	if db == nil || cfg == nil || workspaceID == uuid.Nil {
+		return nil
+	}
+	a, err := WorkspaceAutoReplyAgent(db, workspaceID)
+	if err != nil || a == nil {
+		return nil
+	}
+	flowBlock, err := AggregatedFlowKnowledgeForAgent(db, workspaceID, a.ID)
+	if err != nil {
+		flowBlock = ""
+	}
+	voiceTTS := a.VoiceReplyEnabled && NormalizeTTSProvider(a.TTSProvider) != TTSProviderNone
+	sys := ComposeAgentSystemPrompt(a.Name, a.Role, a.Description, voiceTTS, flowBlock)
+
+	provider := strings.ToLower(strings.TrimSpace(a.Provider))
+	if provider == "" {
+		provider = strings.ToLower(strings.TrimSpace(cfg.LLMProvider))
+	}
+	switch provider {
+	case "gemini":
+		key := strings.TrimSpace(cfg.GeminiAPIKey)
+		if key == "" {
+			return nil
+		}
+		return NewGeminiClient(key, modelOrDefault(a.Model, cfg.GeminiModel), sys)
+	case "openai":
+		key := strings.TrimSpace(cfg.OpenAIAPIKey)
+		if key == "" {
+			return nil
+		}
+		return NewOpenAIClient(key, modelOrDefault(a.Model, cfg.OpenAIModel), sys)
+	default:
+		return nil
+	}
 }
 
 // WorkspaceAutoReplyAgent carrega o agente ativo para auto-resposta WhatsApp (um por workspace).

@@ -208,6 +208,16 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 			)
 		}
 
+		// Se ainda estamos no LLM global (ex.: agente sem chave na BD, falha de descriptografia, ou só chave no .env),
+		// monta cliente com perfil do agente WhatsApp + fluxos publicados usando GEMINI/OPENAI do ambiente.
+		if workspaceID != uuid.Nil && llm == d.LLM {
+			if alt := service.AutoReplyLLMWithAgentAndFlowKnowledgeFromEnv(d.DB, d.Cfg, workspaceID); alt != nil {
+				llm = alt
+				d.Log.Info("auto-reply: LLM do .env com agente WhatsApp + base de conhecimento dos fluxos",
+					zap.String("workspace_id", workspaceID.String()))
+			}
+		}
+
 		if d.Cfg.AutoReplyEnabled && llm != nil && ok && inbound.Text != "" && !inbound.FromMe && conversationID != uuid.Nil {
 			from := canonical
 			evInstanceToken := d.Cfg.EvolutionInstanceName
