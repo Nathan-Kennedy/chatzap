@@ -13,7 +13,8 @@ import (
 )
 
 // ComposeAgentSystemPrompt junta tom base pt-BR + função + contexto do agente.
-func ComposeAgentSystemPrompt(agentName, role, description string) string {
+// voiceTTSActive: true quando o agente tem «Responder em áudio (TTS)» com provedor válido — evita o LLM negar envio de voz.
+func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActive bool) string {
 	var b strings.Builder
 	b.WriteString("Responda sempre em português do Brasil (pt-BR), com tom profissional e cordial. ")
 	b.WriteString("Use frases curtas e naturais, adequadas a conversas no WhatsApp. ")
@@ -23,6 +24,11 @@ func ComposeAgentSystemPrompt(agentName, role, description string) string {
 	b.WriteString("Usa o nome do cliente só quando soar natural: saudação ou recomeço de conversa, proposta/orçamento formal, ou quando ele perguntar se lembras quem ele é — não repitas o nome em todas as mensagens. ")
 	b.WriteString("Não inventes diminutivos nem apelidos carinhosos do nome (ex.: acrescentar «zinho») a menos que o próprio cliente use esse tratamento. ")
 	b.WriteString("Se já cumprimentaste nas tuas mensagens anteriores nesta conversa (ou no histórico), não reabres com «Olá» nem com o nome no início — responde direto ao assunto.\n\n")
+	if voiceTTSActive {
+		b.WriteString("Respostas em áudio (TTS): com esta opção ligada, o sistema converte automaticamente o teu texto em mensagem de voz no WhatsApp. ")
+		b.WriteString("Não digas que não consegues enviar áudios, que só respondes por texto, ou que não tens microfone. ")
+		b.WriteString("Não recuses pedidos do tipo «manda áudio» ou «fala em voz alta»: responde ao conteúdo normalmente; a plataforma trata da entrega em voz.\n\n")
+	}
 	if n := strings.TrimSpace(agentName); n != "" {
 		b.WriteString("Nome do assistente: ")
 		b.WriteString(n)
@@ -49,7 +55,8 @@ func BuildLLMFromAgent(encryptionKey string, a *model.AIAgent) (LLM, error) {
 	if err != nil {
 		return nil, err
 	}
-	sys := ComposeAgentSystemPrompt(a.Name, a.Role, a.Description)
+	voiceTTS := a.VoiceReplyEnabled && NormalizeTTSProvider(a.TTSProvider) != TTSProviderNone
+	sys := ComposeAgentSystemPrompt(a.Name, a.Role, a.Description, voiceTTS)
 	switch strings.ToLower(strings.TrimSpace(a.Provider)) {
 	case "gemini":
 		return NewGeminiClient(rawKey, strings.TrimSpace(a.Model), sys), nil

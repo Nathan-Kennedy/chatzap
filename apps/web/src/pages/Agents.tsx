@@ -807,7 +807,8 @@ export default function Agents() {
               <p className="text-xs text-text-muted">
                 Em vez de texto, o agente envia uma mensagem de voz (TTS) quando um contacto escreve no WhatsApp
                 (auto-resposta). Requer <code className="text-[10px]">PUBLIC_MEDIA_BASE_URL</code> acessível pela
-                Evolution (GET ao ficheiro antes do envio).
+                Evolution (GET ao ficheiro antes do envio). Com TTS ligado, o assistente é instruído a não dizer que
+                «só responde por texto» ou que não envia áudio — o texto é sintetizado em voz automaticamente.
               </p>
               <ul className="text-xs text-text-muted list-disc pl-4 space-y-1">
                 <li>

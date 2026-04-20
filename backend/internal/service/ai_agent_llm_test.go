@@ -12,12 +12,22 @@ import (
 )
 
 func TestComposeAgentSystemPrompt_includesRoleAndDescription(t *testing.T) {
-	s := ComposeAgentSystemPrompt("Clara", "Secretária", "Escritório de engenharia civil.")
+	s := ComposeAgentSystemPrompt("Clara", "Secretária", "Escritório de engenharia civil.", false)
 	if s == "" {
 		t.Fatal("vazio")
 	}
 	if !containsAll(s, []string{"Clara", "Secretária", "engenharia", "Brasil"}) {
 		t.Fatalf("prompt incompleto: %s", s)
+	}
+	if strings.Contains(s, "Respostas em áudio (TTS)") {
+		t.Fatal("bloco TTS não devia aparecer com voiceTTSActive=false")
+	}
+}
+
+func TestComposeAgentSystemPrompt_voiceTTSIncludesHint(t *testing.T) {
+	s := ComposeAgentSystemPrompt("Clara", "Secretária", "Escritório.", true)
+	if !strings.Contains(s, "Respostas em áudio (TTS)") || !strings.Contains(s, "manda áudio") {
+		t.Fatalf("falta instrução TTS no prompt: %s", s)
 	}
 }
 
