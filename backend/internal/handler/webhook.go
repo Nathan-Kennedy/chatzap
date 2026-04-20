@@ -234,9 +234,11 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 					service.NormalizeTTSProvider(agentRow.TTSProvider) != service.TTSProviderNone {
 					if err := service.SendAutoReplyVoice(ctx, d.Log, d.DB, d.Redis, d.Cfg, d.Evolution,
 						d.Cfg.AppEncryptionKey, agentRow, reply, cid, wid, evInstanceToken, evoSlug, from); err != nil {
-						d.Log.Error("auto-reply: envio voz", zap.Error(err))
+						d.Log.Warn("auto-reply: envio voz falhou — a enviar resposta em texto",
+							zap.Error(err))
+					} else {
+						return
 					}
-					return
 				}
 				chunks := service.SplitReplyIntoMessageChunks(reply, 0)
 				if len(chunks) == 0 {
