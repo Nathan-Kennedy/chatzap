@@ -163,6 +163,9 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 					"payload":         map[string]string{"conversation_id": cid.String()},
 					"conversation_id": cid.String(),
 				})
+				if err := service.ApplyKanbanAutomationFromInbound(d.DB, wid, cid, inbound.Text); err != nil {
+					d.Log.Debug("kanban automation", zap.Error(err))
+				}
 			} else {
 				d.Log.Warn("webhook: inbound parseado mas não gravado na inbox",
 					zap.String("path_instance", instanceParam),
@@ -316,9 +319,23 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 								zap.Error(err))
 						} else {
 							if service.ReplyLooksGravablePT(reply) {
-								follow := "Segue por escrito, para guardar ou copiar:\n\n" + reply
-								if err := sendWhatsAppAutoReplyChunks(ctx, d, cid, wid, evoSlug, evInstanceToken, from, follow); err != nil {
-									d.Log.Warn("auto-reply: texto após voz (gravável)", zap.Error(err))
+								gap := time.Duration(0)
+								if d.Cfg != nil && d.Cfg.VoiceToTextGapMs > 0 {
+									gap = time.Duration(d.Cfg.VoiceToTextGapMs) * time.Millisecond
+								}
+								select {
+								case <-ctx.Done():
+									return
+								case <-time.After(gap):
+								}
+								follow, ferr := service.GravableFollowUpText(ctx, d.Cfg, reply)
+								if ferr != nil {
+									d.Log.Warn("auto-reply: resumo pós-voz", zap.Error(ferr))
+								}
+								if strings.TrimSpace(follow) != "" {
+									if err := sendWhatsAppAutoReplyChunks(ctx, d, cid, wid, evoSlug, evInstanceToken, from, follow); err != nil {
+										d.Log.Warn("auto-reply: texto após voz (gravável)", zap.Error(err))
+									}
 								}
 							}
 							return

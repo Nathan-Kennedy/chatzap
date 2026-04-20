@@ -282,3 +282,14 @@ func TestParseInboundFromEvolution_interactiveBody(t *testing.T) {
 		t.Fatalf("ok=%v got=%+v", ok, got)
 	}
 }
+
+func TestParseInboundFromEvolution_buttonsResponseMessage(t *testing.T) {
+	data := json.RawMessage(`{
+		"key": {"remoteJid": "5511999999999@s.whatsapp.net", "fromMe": false, "id": "btn1"},
+		"message": {"buttonsResponseMessage": {"selectedDisplayText": "Confirmar visita"}}
+	}`)
+	got, ok := ParseInboundFromEvolution("messages.upsert", data)
+	if !ok || got.FromMe || got.Text != "Confirmar visita" || got.KeyID != "btn1" {
+		t.Fatalf("ok=%v got=%+v", ok, got)
+	}
+}

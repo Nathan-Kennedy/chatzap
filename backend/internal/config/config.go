@@ -97,6 +97,8 @@ type Config struct {
 	// Kokoro (servidor compat. OpenAI, ex. Kokoro-FastAPI)
 	KokoroDefaultBaseURL string
 	KokoroTTSModel       string // corpo JSON "model" (ex. kokoro)
+	// Pausa entre fim do envio de áudio TTS e mensagem de texto de resumo (ms). 0 = sem pausa extra.
+	VoiceToTextGapMs int
 }
 
 func Load() (*Config, error) {
@@ -177,6 +179,7 @@ func Load() (*Config, error) {
 		ElevenLabsConvAIAgentPhoneNumberID: strings.TrimSpace(os.Getenv("ELEVENLABS_CONVAI_AGENT_PHONE_NUMBER_ID")),
 		KokoroDefaultBaseURL:               strings.TrimRight(strings.TrimSpace(os.Getenv("KOKORO_DEFAULT_BASE_URL")), "/"),
 		KokoroTTSModel:                     strings.TrimSpace(os.Getenv("KOKORO_TTS_MODEL")),
+		VoiceToTextGapMs:                   parseInt(get("VOICE_TO_TEXT_GAP_MS", "1200"), 1200),
 	}
 
 	if raw := os.Getenv("ALLOWED_INSTANCE_IDS"); raw != "" {

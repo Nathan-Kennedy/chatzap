@@ -56,6 +56,8 @@ func main() {
 		&model.AIAgent{},
 		&model.Flow{},
 		&model.Campaign{},
+		&model.KanbanAutomationRule{},
+		&model.ContactProfile{},
 	); err != nil {
 		log.Fatal("migrate", zap.Error(err))
 	}
@@ -179,6 +181,13 @@ func main() {
 	api.Post("/campaigns", authMW, handler.HandleCreateCampaign(log, db))
 	api.Get("/kanban/board", authMW, handler.HandleKanbanBoard(db))
 	api.Patch("/kanban/cards/:conversation_id", authMW, handler.HandleKanbanMoveCard(db))
+	api.Get("/kanban/automation-rules", authMW, handler.HandleKanbanAutomationList(db))
+	api.Post("/kanban/automation-rules", authMW, handler.HandleKanbanAutomationCreate(db))
+	api.Patch("/kanban/automation-rules/:id", authMW, handler.HandleKanbanAutomationUpdate(db))
+	api.Delete("/kanban/automation-rules/:id", authMW, handler.HandleKanbanAutomationDelete(db))
+
+	api.Get("/conversations/:id/contact-profile", authMW, handler.HandleGetContactProfile(db))
+	api.Patch("/conversations/:id/contact-profile", authMW, handler.HandlePatchContactProfile(db))
 
 	app.Get("/ws", handler.WebSocketRoute(cfg, log, rdb))
 

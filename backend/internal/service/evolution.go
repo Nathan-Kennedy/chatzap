@@ -250,6 +250,64 @@ func (c *EvolutionClient) SendMedia(ctx context.Context, instanceToken, number, 
 	return raw, nil
 }
 
+// EvolutionButton botão interativo Evolution API v2 (POST /message/sendButtons/{instance}).
+type EvolutionButton struct {
+	Type        string `json:"type"` // reply | url | call
+	DisplayText string `json:"displayText"`
+	ID          string `json:"id"`
+}
+
+type sendButtonsRequest struct {
+	Number      string            `json:"number"`
+	Title       string            `json:"title"`
+	Description string            `json:"description"`
+	Footer      string            `json:"footer"`
+	Buttons     []EvolutionButton `json:"buttons"`
+}
+
+// SendButtons POST /message/sendButtons/{instance} — Evolution API v2 (documentação oficial).
+func (c *EvolutionClient) SendButtons(ctx context.Context, instanceName, instanceToken, number, title, description, footer string, buttons []EvolutionButton) ([]byte, error) {
+	name := strings.TrimSpace(instanceName)
+	if name == "" {
+		return nil, fmt.Errorf("instância vazia")
+	}
+	if len(buttons) == 0 {
+		return nil, fmt.Errorf("buttons vazio")
+	}
+	number = normalizeWhatsAppNumber(number)
+	u := fmt.Sprintf("%s/message/sendButtons/%s", c.baseURL, url.PathEscape(name))
+	body, err := json.Marshal(sendButtonsRequest{
+		Number:      number,
+		Title:       strings.TrimSpace(title),
+		Description: strings.TrimSpace(description),
+		Footer:      strings.TrimSpace(footer),
+		Buttons:     buttons,
+	})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	token := strings.TrimSpace(instanceToken)
+	if token == "" {
+		token = c.apiKey
+	}
+	req.Header.Set("apikey", token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("evolution http: %w", err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return raw, fmt.Errorf("evolution sendButtons status %d: %s", resp.StatusCode, string(raw))
+	}
+	return raw, nil
+}
+
 // evolutionMediaPayloadMinimal corresponde ao OpenAPI v2 (só message.key.id + convertToMp4).
 func evolutionMediaPayloadMinimal(messageKeyID string, convertToMp4 bool) map[string]interface{} {
 	return map[string]interface{}{

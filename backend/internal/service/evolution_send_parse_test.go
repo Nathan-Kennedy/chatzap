@@ -2,8 +2,21 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
+
+func TestEvolutionButton_JSONTags(t *testing.T) {
+	b := EvolutionButton{Type: "reply", DisplayText: "Sim", ID: "yes"}
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	if !strings.Contains(s, `"type":"reply"`) || !strings.Contains(s, `"displayText":"Sim"`) || !strings.Contains(s, `"id":"yes"`) {
+		t.Fatalf("unexpected json: %s", s)
+	}
+}
 
 func TestParseEvolutionSendTextResponse_flatKey(t *testing.T) {
 	raw := []byte(`{"key":{"remoteJid":"5511999999999@s.whatsapp.net","fromMe":true,"id":"ABCOUT"},"message":{"conversation":"x"}}`)

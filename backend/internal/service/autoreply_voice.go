@@ -197,8 +197,9 @@ func SendAutoReplyVoice(
 			sendRJ = contactJID
 		}
 
+		// Body sem transcript: a inbox mostra player+legenda no mesmo bubble se body=trecho falado.
 		msgID, err := RecordOutbound(db, conversationID, OutboundRecord{
-			Body:        text,
+			Body:        "[áudio]",
 			ExternalID:  sendKeyID,
 			MessageType: "audio",
 			FileName:    filename,
