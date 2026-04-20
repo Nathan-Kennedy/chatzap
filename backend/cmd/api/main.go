@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := newLogger(cfg.LogLevel)
+	log := newLogger(cfg.LogLevel, cfg.Env)
 	defer func() { _ = log.Sync() }()
 
 	db, err := database.NewPostgres(cfg.DatabaseURL, log)
@@ -240,7 +240,7 @@ func errorHandler(log *zap.Logger) fiber.ErrorHandler {
 	}
 }
 
-func newLogger(level string) *zap.Logger {
+func newLogger(level string, env string) *zap.Logger {
 	var zapLevel zapcore.Level
 	switch level {
 	case "debug":
@@ -254,6 +254,11 @@ func newLogger(level string) *zap.Logger {
 	}
 	zcfg := zap.NewProductionConfig()
 	zcfg.Level = zap.NewAtomicLevelAt(zapLevel)
+	// Zap production usa stderr; Coolify/agregadores costumam exportar só stdout — logs da auto-resposta sumiam.
+	if strings.EqualFold(strings.TrimSpace(env), "production") {
+		zcfg.OutputPaths = []string{"stdout"}
+		zcfg.ErrorOutputPaths = []string{"stdout"}
+	}
 	zl, err := zcfg.Build()
 	if err != nil {
 		zl = zap.NewNop()
