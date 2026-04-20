@@ -27,7 +27,9 @@ func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActiv
 	if voiceTTSActive {
 		b.WriteString("Respostas em áudio (TTS): com esta opção ligada, o sistema converte automaticamente o teu texto em mensagem de voz no WhatsApp. ")
 		b.WriteString("Não digas que não consegues enviar áudios, que só respondes por texto, ou que não tens microfone. ")
-		b.WriteString("Não recuses pedidos do tipo «manda áudio» ou «fala em voz alta»: responde ao conteúdo normalmente; a plataforma trata da entrega em voz.\n\n")
+		b.WriteString("Não recuses pedidos do tipo «manda áudio» ou «fala em voz alta»: responde ao conteúdo normalmente; a plataforma trata da entrega em voz. ")
+		b.WriteString("Mensagens curtas podem ir só em texto; as mais longas tendem a ir em voz. ")
+		b.WriteString("Em respostas mais extensas podes opcionalmente intercalar as etiquetas [PAUSA], [HESITA] e [GAGUEJA] entre frases — com voz Gemini TTS são usadas para ritmo natural de nota de voz (não digas o nome das etiquetas em voz alta).\n\n")
 	}
 	if n := strings.TrimSpace(agentName); n != "" {
 		b.WriteString("Nome do assistente: ")

@@ -373,6 +373,8 @@ export default function Agents() {
   const modelPreset = form.watch('model_preset')
   const voiceReplyEnabled = form.watch('voice_reply_enabled')
   const ttsProvider = form.watch('tts_provider')
+  /** Com TTS real, a auto-resposta WhatsApp é obrigatória — não mostramos o toggle separado. */
+  const waAutoLockedByVoice = voiceReplyEnabled && ttsProvider !== 'none'
 
   useEffect(() => {
     if (!formOpen) return
@@ -455,6 +457,8 @@ export default function Agents() {
           ? values.model_custom.trim()
           : values.model_preset
       const ttsProv = values.voice_reply_enabled ? values.tts_provider : 'none'
+      const useWhatsAppAuto =
+        values.voice_reply_enabled && ttsProv !== 'none' ? true : values.use_for_whatsapp_auto_reply
       const res = await api.post<unknown>('/agents', {
         name: values.name.trim(),
         provider: values.provider,
@@ -463,7 +467,7 @@ export default function Agents() {
         role: values.role.trim(),
         description: values.description.trim(),
         active: values.active,
-        use_for_whatsapp_auto_reply: values.use_for_whatsapp_auto_reply,
+        use_for_whatsapp_auto_reply: useWhatsAppAuto,
         voice_reply_enabled: values.voice_reply_enabled && ttsProv !== 'none',
         tts_provider: ttsProv,
         openai_tts_voice: values.openai_tts_voice.trim(),
@@ -500,6 +504,8 @@ export default function Agents() {
           ? values.model_custom.trim()
           : values.model_preset
       const ttsProv = values.voice_reply_enabled ? values.tts_provider : 'none'
+      const useWhatsAppAuto =
+        values.voice_reply_enabled && ttsProv !== 'none' ? true : values.use_for_whatsapp_auto_reply
       const body: Record<string, unknown> = {
         name: values.name.trim(),
         provider: values.provider,
@@ -507,7 +513,7 @@ export default function Agents() {
         role: values.role.trim(),
         description: values.description.trim(),
         active: values.active,
-        use_for_whatsapp_auto_reply: values.use_for_whatsapp_auto_reply,
+        use_for_whatsapp_auto_reply: useWhatsAppAuto,
         voice_reply_enabled: values.voice_reply_enabled && ttsProv !== 'none',
         tts_provider: ttsProv,
         openai_tts_voice: values.openai_tts_voice.trim(),
@@ -778,7 +784,7 @@ export default function Agents() {
               <Label htmlFor="ag-desc">Descrição / contexto</Label>
               <Textarea id="ag-desc" className="bg-background min-h-[100px]" {...form.register('description')} />
             </div>
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="flex items-center gap-2">
                 <Controller
                   control={form.control}
@@ -789,26 +795,36 @@ export default function Agents() {
                 />
                 <Label htmlFor="ag-active">Ativo</Label>
               </div>
-              <div className="flex items-center gap-2">
-                <Controller
-                  control={form.control}
-                  name="use_for_whatsapp_auto_reply"
-                  render={({ field }) => (
-                    <Switch checked={field.value} onCheckedChange={field.onChange} id="ag-wa" />
-                  )}
-                />
-                <Label htmlFor="ag-wa" className="text-sm">
-                  Usar na auto-resposta WhatsApp
-                </Label>
-              </div>
+              {!waAutoLockedByVoice ? (
+                <div className="flex items-center gap-2">
+                  <Controller
+                    control={form.control}
+                    name="use_for_whatsapp_auto_reply"
+                    render={({ field }) => (
+                      <Switch checked={field.value} onCheckedChange={field.onChange} id="ag-wa" />
+                    )}
+                  />
+                  <Label htmlFor="ag-wa" className="text-sm">
+                    Usar na auto-resposta WhatsApp
+                  </Label>
+                </div>
+              ) : (
+                <p className="text-xs text-text-muted sm:max-w-[280px] sm:text-right">
+                  Com <strong className="font-medium text-text-primary">resposta em áudio</strong> ativa, a
+                  auto-resposta WhatsApp fica ligada automaticamente.
+                </p>
+              )}
             </div>
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
               <p className="text-sm font-medium text-text-primary">Resposta em voz (WhatsApp)</p>
               <p className="text-xs text-text-muted">
-                Em vez de texto, o agente envia uma mensagem de voz (TTS) quando um contacto escreve no WhatsApp
-                (auto-resposta). Requer <code className="text-[10px]">PUBLIC_MEDIA_BASE_URL</code> acessível pela
-                Evolution (GET ao ficheiro antes do envio). Com TTS ligado, o assistente é instruído a não dizer que
-                «só responde por texto» ou que não envia áudio — o texto é sintetizado em voz automaticamente.
+                Respostas <strong className="font-medium text-text-primary">curtas</strong> vão em texto; as{' '}
+                <strong className="font-medium text-text-primary">mais longas</strong> usam nota de voz (TTS). Se a
+                resposta tiver dados para guardar (valores, datas, agendamento), após o áudio segue uma mensagem de
+                texto com o mesmo conteúdo. Requer <code className="text-[10px]">PUBLIC_MEDIA_BASE_URL</code>{' '}
+                acessível pela Evolution. Com Gemini TTS, etiquetas{' '}
+                <code className="text-[10px]">[PAUSA]</code>, <code className="text-[10px]">[HESITA]</code>,{' '}
+                <code className="text-[10px]">[GAGUEJA]</code> no texto do modelo são interpretadas para ritmo natural.
               </p>
               <ul className="text-xs text-text-muted list-disc pl-4 space-y-1">
                 <li>
@@ -840,6 +856,10 @@ export default function Agents() {
                         } else if (form.getValues('tts_provider') === 'none') {
                           form.setValue('tts_provider', 'gemini_tts')
                           form.setValue('openai_tts_voice', defaultVoiceForTTSProvider('gemini_tts'))
+                          form.setValue('use_for_whatsapp_auto_reply', true)
+                        }
+                        if (v) {
+                          form.setValue('use_for_whatsapp_auto_reply', true)
                         }
                       }}
                       id="ag-voice"
@@ -861,6 +881,9 @@ export default function Agents() {
                           onValueChange={(v) => {
                             field.onChange(v)
                             form.setValue('openai_tts_voice', defaultVoiceForTTSProvider(v as TTSProviderValue))
+                            if (form.getValues('voice_reply_enabled') && v !== 'none') {
+                              form.setValue('use_for_whatsapp_auto_reply', true)
+                            }
                           }}
                         >
                           <SelectTrigger className="bg-background">

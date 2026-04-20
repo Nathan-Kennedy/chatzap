@@ -29,6 +29,9 @@ func TestComposeAgentSystemPrompt_voiceTTSIncludesHint(t *testing.T) {
 	if !strings.Contains(s, "Respostas em áudio (TTS)") || !strings.Contains(s, "manda áudio") {
 		t.Fatalf("falta instrução TTS no prompt: %s", s)
 	}
+	if !strings.Contains(s, "[PAUSA]") {
+		t.Fatalf("falta menção às etiquetas Gemini TTS: %s", s)
+	}
 }
 
 func containsAll(hay string, needles []string) bool {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -24,6 +25,70 @@ type WebhookDeps struct {
 	Cfg       *config.Config
 	Evolution *service.EvolutionClient
 	LLM       service.LLM
+}
+
+// sendWhatsAppAutoReplyChunks envia resposta em texto (presença + Evolution), grava inbox e evento.
+func sendWhatsAppAutoReplyChunks(
+	ctx context.Context,
+	d WebhookDeps,
+	cid, wid uuid.UUID,
+	evoSlug, evInstanceToken, from string,
+	reply string,
+) error {
+	chunks := service.SplitReplyIntoMessageChunks(reply, 0)
+	if len(chunks) == 0 {
+		return nil
+	}
+	firstBubble := true
+	for i, part := range chunks {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if !firstBubble {
+			pause := service.PauseBetweenChunks()
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(pause):
+			}
+		}
+		typing := service.TypingDelayBeforeChunk(part, firstBubble)
+		typingMs := int(typing / time.Millisecond)
+		if typingMs < 1 {
+			typingMs = 1
+		}
+		if err := d.Evolution.SendPresence(ctx, evoSlug, evInstanceToken, from, "composing", typingMs); err != nil {
+			d.Log.Warn("auto-reply: sendPresence (digitando) falhou — Evolution Go usa POST /message/presence; Node usa POST /chat/sendPresence/{instance}",
+				zap.Error(err))
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(typing):
+		}
+		sendRaw, err := d.Evolution.SendText(ctx, evInstanceToken, from, part)
+		if err != nil {
+			d.Log.Error("evolution send", zap.Int("chunk_index", i), zap.Error(err))
+			return err
+		}
+		_, sendKeyID := service.ParseEvolutionSendTextResponse(sendRaw)
+		if err := service.RecordOutboundMessage(d.DB, cid, part, sendKeyID); err != nil {
+			d.Log.Error("record outbound", zap.Error(err))
+			return err
+		}
+		if err := service.PersistPortalOutboundWebhook(d.DB, evoSlug, from, "", part, sendKeyID); err != nil {
+			d.Log.Debug("portal outbound webhook audit", zap.Error(err))
+		}
+		if wid != uuid.Nil {
+			service.PublishInboxEvent(d.Redis, wid, map[string]interface{}{
+				"type":            "message.created",
+				"conversation_id": cid.String(),
+			})
+		}
+		firstBubble = false
+	}
+	return nil
 }
 
 // HandleWhatsAppWebhook POST /webhooks/whatsapp/:instance_id (playbook).
@@ -243,12 +308,25 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 						zap.String("tts_provider", agentRow.TTSProvider),
 						zap.Bool("has_app_encryption_key", strings.TrimSpace(d.Cfg.AppEncryptionKey) != ""),
 					)
-					if err := service.SendAutoReplyVoice(ctx, d.Log, d.DB, d.Redis, d.Cfg, d.Evolution,
-						d.Cfg.AppEncryptionKey, agentRow, reply, cid, wid, evInstanceToken, evoSlug, from); err != nil {
-						d.Log.Warn("auto-reply: envio voz falhou — a enviar resposta em texto",
-							zap.Error(err))
+					tryVoice := service.PreferVoiceForAutoReply(reply)
+					if tryVoice {
+						if err := service.SendAutoReplyVoice(ctx, d.Log, d.DB, d.Redis, d.Cfg, d.Evolution,
+							d.Cfg.AppEncryptionKey, agentRow, reply, cid, wid, evInstanceToken, evoSlug, from); err != nil {
+							d.Log.Warn("auto-reply: envio voz falhou — a enviar resposta em texto",
+								zap.Error(err))
+						} else {
+							if service.ReplyLooksGravablePT(reply) {
+								follow := "Segue por escrito, para guardar ou copiar:\n\n" + reply
+								if err := sendWhatsAppAutoReplyChunks(ctx, d, cid, wid, evoSlug, evInstanceToken, from, follow); err != nil {
+									d.Log.Warn("auto-reply: texto após voz (gravável)", zap.Error(err))
+								}
+							}
+							return
+						}
 					} else {
-						return
+						d.Log.Warn("auto-reply: resposta curta — canal texto (TTS reserva-se para mensagens mais longas)",
+							zap.Int("runes", utf8.RuneCountInString(strings.TrimSpace(reply))),
+						)
 					}
 				} else if agentRow != nil {
 					ttsN := service.NormalizeTTSProvider(agentRow.TTSProvider)
@@ -262,58 +340,7 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 							zap.String("agent_id", agentRow.ID.String()))
 					}
 				}
-				chunks := service.SplitReplyIntoMessageChunks(reply, 0)
-				if len(chunks) == 0 {
-					return
-				}
-				firstBubble := true
-				for i, part := range chunks {
-					part = strings.TrimSpace(part)
-					if part == "" {
-						continue
-					}
-					if !firstBubble {
-						pause := service.PauseBetweenChunks()
-						select {
-						case <-ctx.Done():
-							return
-						case <-time.After(pause):
-						}
-					}
-					typing := service.TypingDelayBeforeChunk(part, firstBubble)
-					typingMs := int(typing / time.Millisecond)
-					if typingMs < 1 {
-						typingMs = 1
-					}
-					if err := d.Evolution.SendPresence(ctx, evoSlug, evInstanceToken, from, "composing", typingMs); err != nil {
-						d.Log.Warn("auto-reply: sendPresence (digitando) falhou — Evolution Go usa POST /message/presence; Node usa POST /chat/sendPresence/{instance}",
-							zap.Error(err))
-					}
-					select {
-					case <-ctx.Done():
-						return
-					case <-time.After(typing):
-					}
-					sendRaw, err := d.Evolution.SendText(ctx, evInstanceToken, from, part)
-					if err != nil {
-						d.Log.Error("evolution send", zap.Int("chunk_index", i), zap.Error(err))
-						return
-					}
-					_, sendKeyID := service.ParseEvolutionSendTextResponse(sendRaw)
-					if err := service.RecordOutboundMessage(d.DB, cid, part, sendKeyID); err != nil {
-						d.Log.Error("record outbound", zap.Error(err))
-					}
-					if err := service.PersistPortalOutboundWebhook(d.DB, evoSlug, from, "", part, sendKeyID); err != nil {
-						d.Log.Debug("portal outbound webhook audit", zap.Error(err))
-					}
-					if wid != uuid.Nil {
-						service.PublishInboxEvent(d.Redis, wid, map[string]interface{}{
-							"type":            "message.created",
-							"conversation_id": cid.String(),
-						})
-					}
-					firstBubble = false
-				}
+				_ = sendWhatsAppAutoReplyChunks(ctx, d, cid, wid, evoSlug, evInstanceToken, from, reply)
 			}()
 		} else if d.Cfg.AutoReplyEnabled && llm == nil && ok && inbound.Text != "" && !inbound.FromMe && conversationID != uuid.Nil {
 			motivo := ""
