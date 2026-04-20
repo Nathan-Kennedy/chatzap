@@ -12,7 +12,7 @@ import (
 )
 
 func TestComposeAgentSystemPrompt_includesRoleAndDescription(t *testing.T) {
-	s := ComposeAgentSystemPrompt("Clara", "Secretária", "Escritório de engenharia civil.", false)
+	s := ComposeAgentSystemPrompt("Clara", "Secretária", "Escritório de engenharia civil.", false, "")
 	if s == "" {
 		t.Fatal("vazio")
 	}
@@ -25,12 +25,19 @@ func TestComposeAgentSystemPrompt_includesRoleAndDescription(t *testing.T) {
 }
 
 func TestComposeAgentSystemPrompt_voiceTTSIncludesHint(t *testing.T) {
-	s := ComposeAgentSystemPrompt("Clara", "Secretária", "Escritório.", true)
+	s := ComposeAgentSystemPrompt("Clara", "Secretária", "Escritório.", true, "")
 	if !strings.Contains(s, "Respostas em áudio (TTS)") || !strings.Contains(s, "manda áudio") {
 		t.Fatalf("falta instrução TTS no prompt: %s", s)
 	}
 	if !strings.Contains(s, "[PAUSA]") {
 		t.Fatalf("falta menção às etiquetas Gemini TTS: %s", s)
+	}
+}
+
+func TestComposeAgentSystemPrompt_flowKnowledgeAppended(t *testing.T) {
+	s := ComposeAgentSystemPrompt("A", "R", "Ctx.", false, "## Fluxo X\nProdutos:\n- Item")
+	if !strings.Contains(s, "Base de conhecimento (fluxos publicados):") || !strings.Contains(s, "Produtos:") {
+		t.Fatalf("expected flow block in prompt: %s", s)
 	}
 }
 

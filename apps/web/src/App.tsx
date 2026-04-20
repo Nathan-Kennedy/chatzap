@@ -10,6 +10,7 @@ import Campaigns from './pages/Campaigns'
 import Agents from './pages/Agents'
 import Instances from './pages/Instances'
 import Flows from './pages/Flows'
+import FlowDetail from './pages/FlowDetail'
 import Analytics from './pages/Analytics'
 import Settings from './pages/Settings'
 import { hasAuthSession } from '@/lib/auth-storage'
@@ -36,6 +37,7 @@ function App() {
           <Route path="agents" element={<Agents />} />
           <Route path="instances" element={<Instances />} />
           <Route path="flows" element={<Flows />} />
+          <Route path="flows/:id" element={<FlowDetail />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="settings" element={<Settings />} />
         </Route>

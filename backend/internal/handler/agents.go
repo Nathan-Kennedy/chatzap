@@ -632,7 +632,7 @@ func HandleTestAgent(db *gorm.DB, cfg *config.Config) fiber.Handler {
 		if !agent.Active {
 			return JSONError(c, fiber.StatusBadRequest, "inactive", "agente inativo", nil)
 		}
-		llm, err := service.BuildLLMFromAgent(cfg.AppEncryptionKey, &agent)
+		llm, err := service.BuildLLMFromAgent(db, cfg.AppEncryptionKey, &agent)
 		if err != nil {
 			return JSONError(c, fiber.StatusInternalServerError, "llm_error", err.Error(), nil)
 		}

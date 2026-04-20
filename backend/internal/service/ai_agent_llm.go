@@ -14,7 +14,7 @@ import (
 
 // ComposeAgentSystemPrompt junta tom base pt-BR + função + contexto do agente.
 // voiceTTSActive: true quando o agente tem «Responder em áudio (TTS)» com provedor válido — evita o LLM negar envio de voz.
-func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActive bool) string {
+func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActive bool, flowKnowledge string) string {
 	var b strings.Builder
 	b.WriteString("Responda sempre em português do Brasil (pt-BR), com tom profissional e cordial. ")
 	b.WriteString("Use frases curtas e naturais, adequadas a conversas no WhatsApp. ")
@@ -45,11 +45,16 @@ func ComposeAgentSystemPrompt(agentName, role, description string, voiceTTSActiv
 		b.WriteString("Contexto e instruções:\n")
 		b.WriteString(d)
 	}
+	if fk := strings.TrimSpace(flowKnowledge); fk != "" {
+		b.WriteString("\n\nBase de conhecimento (fluxos publicados):\n")
+		b.WriteString(fk)
+	}
 	return strings.TrimSpace(b.String())
 }
 
 // BuildLLMFromAgent desencripta a chave e instancia o cliente LLM.
-func BuildLLMFromAgent(encryptionKey string, a *model.AIAgent) (LLM, error) {
+// Se db != nil, agrega texto dos fluxos publicados ligados a este agente ao system prompt.
+func BuildLLMFromAgent(db *gorm.DB, encryptionKey string, a *model.AIAgent) (LLM, error) {
 	if a == nil {
 		return nil, fmt.Errorf("agente nil")
 	}
@@ -58,7 +63,14 @@ func BuildLLMFromAgent(encryptionKey string, a *model.AIAgent) (LLM, error) {
 		return nil, err
 	}
 	voiceTTS := a.VoiceReplyEnabled && NormalizeTTSProvider(a.TTSProvider) != TTSProviderNone
-	sys := ComposeAgentSystemPrompt(a.Name, a.Role, a.Description, voiceTTS)
+	var flowBlock string
+	if db != nil {
+		flowBlock, err = AggregatedFlowKnowledgeForAgent(db, a.WorkspaceID, a.ID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	sys := ComposeAgentSystemPrompt(a.Name, a.Role, a.Description, voiceTTS, flowBlock)
 	switch strings.ToLower(strings.TrimSpace(a.Provider)) {
 	case "gemini":
 		return NewGeminiClient(rawKey, strings.TrimSpace(a.Model), sys), nil
@@ -78,7 +90,7 @@ func WorkspaceAutoReplyLLM(db *gorm.DB, encryptionKey string, workspaceID uuid.U
 	if strings.TrimSpace(a.APIKeyCipher) == "" {
 		return nil, nil
 	}
-	return BuildLLMFromAgent(encryptionKey, a)
+	return BuildLLMFromAgent(db, encryptionKey, a)
 }
 
 // WorkspaceAutoReplyAgent carrega o agente ativo para auto-resposta WhatsApp (um por workspace).

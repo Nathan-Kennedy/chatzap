@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, Plus } from 'lucide-react'
 import { api, unwrapEnvelope } from '@/lib/api'
@@ -52,6 +53,7 @@ async function fetchAgents(): Promise<AgentListRow[]> {
 }
 
 export default function Flows() {
+  const navigate = useNavigate()
   const qc = useQueryClient()
   const [sheetOpen, setSheetOpen] = useState(false)
   const [name, setName] = useState('')
@@ -78,13 +80,14 @@ export default function Flows() {
       const res = await api.post<unknown>('/flows', body)
       return unwrapEnvelope<{ id: string }>(res).data
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       toast.success('Fluxo criado')
       setSheetOpen(false)
       setName('')
       setDescription('')
       setAgentId('')
       void qc.invalidateQueries({ queryKey: ['flows'] })
+      if (res?.id) navigate(`/flows/${res.id}`)
     },
     onError: (e: unknown) => {
       if (e instanceof ApiEnvelopeError) toast.error(e.message)
@@ -98,7 +101,7 @@ export default function Flows() {
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Fluxos</h1>
           <p className="text-sm text-text-muted">
-            Modelos guardados no servidor (MVP). Execução automática e editor de nós ficam para fases seguintes.
+            Define produtos, serviços, horários, links e notas por fluxo. Conteúdo publicado entra na base de conhecimento do agente de WhatsApp.
           </p>
         </div>
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
@@ -158,75 +161,33 @@ export default function Flows() {
               <p className="text-sm text-text-muted">Nenhum fluxo ainda. Cria um com &quot;Novo fluxo&quot;.</p>
             ) : (
               data.map((f) => (
-                <Card key={f.id} className="bg-sidebar/80 border-border">
-                  <CardHeader className="py-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <GitBranch className="size-4 text-primary" />
-                        {f.name}
-                      </CardTitle>
-                      <Badge variant={f.published ? 'default' : 'secondary'}>
-                        {f.published ? 'Publicado' : 'Rascunho'}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="text-xs text-text-muted pb-3">
-                    {f.description || '—'}
-                    {f.agentName ? ` · Agente: ${f.agentName}` : ''}
-                  </CardContent>
-                </Card>
+                <Link key={f.id} to={`/flows/${f.id}`} className="block">
+                  <Card className="bg-sidebar/80 border-border hover:border-primary/40 transition-colors cursor-pointer">
+                    <CardHeader className="py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <CardTitle className="text-base flex items-center gap-2">
+                          <GitBranch className="size-4 text-primary" />
+                          {f.name}
+                        </CardTitle>
+                        <Badge variant={f.published ? 'default' : 'secondary'}>
+                          {f.published ? 'Publicado' : 'Rascunho'}
+                        </Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="text-xs text-text-muted pb-3">
+                      {f.description || '—'}
+                      {f.agentName ? ` · Agente: ${f.agentName}` : ''}
+                    </CardContent>
+                  </Card>
+                </Link>
               ))
             )}
           </div>
         </ScrollArea>
 
-        <div className="rounded-xl border border-border bg-card relative overflow-hidden min-h-[280px]">
-          <div className="absolute inset-0 flex items-center justify-center p-6">
-            <svg className="w-full h-full max-w-md" viewBox="0 0 400 200">
-              <path
-                d="M 80 100 C 140 100 160 40 200 40 C 240 40 260 100 320 100"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="text-primary/50"
-              />
-              <rect
-                x="20"
-                y="70"
-                width="60"
-                height="60"
-                rx="8"
-                className="fill-card stroke-primary stroke-2"
-              />
-              <text x="50" y="105" textAnchor="middle" className="fill-text-primary text-[10px]">
-                Início
-              </text>
-              <rect
-                x="170"
-                y="10"
-                width="60"
-                height="60"
-                rx="8"
-                className="fill-card stroke-violet-500 stroke-2"
-              />
-              <text x="200" y="45" textAnchor="middle" className="fill-text-primary text-[10px]">
-                Msg
-              </text>
-              <rect
-                x="320"
-                y="70"
-                width="60"
-                height="60"
-                rx="8"
-                className="fill-card stroke-success stroke-2"
-              />
-              <text x="350" y="105" textAnchor="middle" className="fill-text-primary text-[10px]">
-                Fim
-              </text>
-            </svg>
-          </div>
-          <p className="absolute bottom-3 left-0 right-0 text-center text-[11px] text-text-muted">
-            Pré-visualização ilustrativa — editor de fluxo em breve.
+        <div className="rounded-xl border border-border bg-card p-6 min-h-[280px] flex flex-col justify-center">
+          <p className="text-sm text-text-muted text-center max-w-sm mx-auto">
+            Clica num fluxo à esquerda para editar produtos, serviços, horários, links e notas. Publica o fluxo e associa-o ao agente de auto-resposta para o modelo usar esta informação.
           </p>
         </div>
       </div>

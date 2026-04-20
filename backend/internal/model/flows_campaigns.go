@@ -15,8 +15,10 @@ type Flow struct {
 	Description string     `gorm:"type:text"`
 	AgentID     *uuid.UUID `gorm:"type:uuid"`
 	Published   bool       `gorm:"default:false"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// KnowledgeJSON: produtos, serviços, horários, links, imagens (URLs), notas — ver FlowKnowledge.
+	KnowledgeJSON string `gorm:"type:text;column:knowledge_json"`
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
 func (f *Flow) BeforeCreate(tx *gorm.DB) error {
