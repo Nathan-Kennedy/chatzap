@@ -19,10 +19,10 @@ const (
 )
 
 // BuildWhatsAppHistoryForLLM monta texto com mensagens anteriores da conversa.
-// Se excludeMessageID != Nil, remove essa linha do histórico (mensagem atual por ID — evita deixar "Cliente: [áudio]"
-// quando o body na BD ainda não coincide com currentInboundText após transcrição).
-// Caso contrário, exclui a última inbound se o body for igual a currentInboundText.
-func BuildWhatsAppHistoryForLLM(db *gorm.DB, conversationID uuid.UUID, currentInboundText string, maxMsgs int, maxRunes int, excludeMessageID uuid.UUID) (string, error) {
+// Se excludeMessageIDs não for vazio, remove essas mensagens do histórico (mensagens atuais / lote —
+// evita duplicar o que vai no sufixo ao LLM).
+// Se excludeMessageIDs for vazio, exclui a última inbound se o body for igual a currentInboundText.
+func BuildWhatsAppHistoryForLLM(db *gorm.DB, conversationID uuid.UUID, currentInboundText string, maxMsgs int, maxRunes int, excludeMessageIDs []uuid.UUID) (string, error) {
 	if maxMsgs < 1 {
 		maxMsgs = DefaultHistoryMaxMessages
 	}
@@ -39,14 +39,22 @@ func BuildWhatsAppHistoryForLLM(db *gorm.DB, conversationID uuid.UUID, currentIn
 		msgs[i], msgs[j] = msgs[j], msgs[i]
 	}
 
-	if excludeMessageID != uuid.Nil {
-		out := msgs[:0]
-		for _, m := range msgs {
-			if m.ID != excludeMessageID {
-				out = append(out, m)
+	if len(excludeMessageIDs) > 0 {
+		skip := make(map[uuid.UUID]struct{}, len(excludeMessageIDs))
+		for _, id := range excludeMessageIDs {
+			if id != uuid.Nil {
+				skip[id] = struct{}{}
 			}
 		}
-		msgs = out
+		if len(skip) > 0 {
+			out := msgs[:0]
+			for _, m := range msgs {
+				if _, rm := skip[m.ID]; !rm {
+					out = append(out, m)
+				}
+			}
+			msgs = out
+		}
 	} else {
 		cur := strings.TrimSpace(currentInboundText)
 		if len(msgs) > 0 {

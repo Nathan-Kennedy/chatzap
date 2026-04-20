@@ -52,7 +52,7 @@ func TestBuildWhatsAppHistoryForLLM_skipsCurrentAndFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	s, err := BuildWhatsAppHistoryForLLM(db, cid, cur, 20, 8000, uuid.Nil)
+	s, err := BuildWhatsAppHistoryForLLM(db, cid, cur, 20, 8000, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestBuildWhatsAppHistoryForLLM_excludesByMessageID(t *testing.T) {
 		t.Fatal(err)
 	}
 	transcribed := "[Mensagem de voz] Olá"
-	s, err := BuildWhatsAppHistoryForLLM(db, cid, transcribed, 20, 8000, audioID)
+	s, err := BuildWhatsAppHistoryForLLM(db, cid, transcribed, 20, 8000, []uuid.UUID{audioID})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -60,6 +61,8 @@ type Config struct {
 	OpenAIModel      string
 	LLMSystemPrompt  string // partilhado entre Gemini e OpenAI
 	AutoReplyEnabled bool
+	// AutoReplyDebounce: espera após a última mensagem inbound antes de gerar resposta (agrupa várias mensagens seguidas). 0 = sem espera.
+	AutoReplyDebounce time.Duration
 
 	// Opcional: restringir :instance_id na URL a estes valores (vazio = qualquer)
 	AllowedInstanceIDs map[string]struct{}
@@ -161,6 +164,7 @@ func Load() (*Config, error) {
 		OpenAIModel:                        get("OPENAI_MODEL", "gpt-4o-mini"),
 		LLMSystemPrompt:                    getLLMSystemPrompt(),
 		AutoReplyEnabled:                   parseBool(get("AUTO_REPLY_ENABLED", "true")),
+		AutoReplyDebounce:                  debounceSecondsToDuration(get("AUTO_REPLY_DEBOUNCE_SECONDS", "10")),
 		JWTSecret:                          os.Getenv("JWT_SECRET"),
 		JWTAccessTTLMinutes:                parseInt(get("JWT_ACCESS_TTL_MINUTES", "1440"), 1440),
 		JWTRefreshTTLDays:                  parseInt(get("JWT_REFRESH_TTL_DAYS", "7"), 7),
@@ -277,6 +281,22 @@ func parseIntNonNeg(s string) int {
 		return 0
 	}
 	return n
+}
+
+// debounceSecondsToDuration: 0 = resposta imediata; vazio ou inválido = 10s; máx. 1h.
+func debounceSecondsToDuration(s string) time.Duration {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 10 * time.Second
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil || n < 0 {
+		return 10 * time.Second
+	}
+	if n > 3600 {
+		n = 3600
+	}
+	return time.Duration(n) * time.Second
 }
 
 // parseFloatNonNeg devolve 0 se vazio ou inválido.

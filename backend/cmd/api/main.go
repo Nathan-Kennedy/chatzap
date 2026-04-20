@@ -85,6 +85,12 @@ func main() {
 	} else if cfg.AutoReplyEnabled {
 		log.Info("auto-resposta ligada sem LLM global (.env); usa agente por workspace ou defina GEMINI/OPENAI_API_KEY como fallback")
 	}
+	autoReplyDebounce := service.NewAutoReplyDebouncer(cfg.AutoReplyDebounce)
+	if cfg.AutoReplyEnabled && cfg.AutoReplyDebounce > 0 {
+		log.Info("auto-resposta com debounce",
+			zap.Duration("wait_after_last_message", cfg.AutoReplyDebounce),
+		)
+	}
 
 	// WriteTimeout tem de exceder o maior context.WithTimeout dos handlers (ex.: sync-contacts 120s).
 	// Caso contrário o fasthttp devolve 408 Request Timeout enquanto o handler ainda corre.
@@ -122,12 +128,13 @@ func main() {
 	wh.Post("/whatsapp/:instance_id",
 		middleware.WebhookAuth(cfg, db, log),
 		handler.HandleWhatsAppWebhook(handler.WebhookDeps{
-			Log:       log,
-			DB:        db,
-			Redis:     rdb,
-			Cfg:       cfg,
-			Evolution: ev,
-			LLM:       llm,
+			Log:                log,
+			DB:                 db,
+			Redis:              rdb,
+			Cfg:                cfg,
+			Evolution:          ev,
+			LLM:                llm,
+			AutoReplyDebouncer: autoReplyDebounce,
 		}))
 
 	auth := app.Group("/api/v1/auth", limiter.New(limiter.Config{Max: 60, Expiration: time.Minute}))
