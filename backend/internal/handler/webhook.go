@@ -226,8 +226,10 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 					)
 					return
 				}
+				// Carregar agente sempre que houver workspace (não condicionar a APP_ENCRYPTION_KEY):
+				// voz/TTS usa flags na BD; só a desencriptação de chaves no SendAutoReplyVoice precisa da env.
 				var agentRow *model.AIAgent
-				if wid != uuid.Nil && strings.TrimSpace(d.Cfg.AppEncryptionKey) != "" {
+				if wid != uuid.Nil {
 					if a, aerr := service.WorkspaceAutoReplyAgent(d.DB, wid); aerr != nil {
 						d.Log.Debug("auto-reply: carregar agente", zap.Error(aerr))
 					} else {
@@ -236,6 +238,10 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 				}
 				if agentRow != nil && agentRow.VoiceReplyEnabled &&
 					service.NormalizeTTSProvider(agentRow.TTSProvider) != service.TTSProviderNone {
+					d.Log.Info("auto-reply: tentativa de resposta em voz",
+						zap.String("tts_provider", agentRow.TTSProvider),
+						zap.Bool("has_app_encryption_key", strings.TrimSpace(d.Cfg.AppEncryptionKey) != ""),
+					)
 					if err := service.SendAutoReplyVoice(ctx, d.Log, d.DB, d.Redis, d.Cfg, d.Evolution,
 						d.Cfg.AppEncryptionKey, agentRow, reply, cid, wid, evInstanceToken, evoSlug, from); err != nil {
 						d.Log.Warn("auto-reply: envio voz falhou — a enviar resposta em texto",
