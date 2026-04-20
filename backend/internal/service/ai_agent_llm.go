@@ -86,6 +86,31 @@ func WorkspaceAutoReplyAgent(db *gorm.DB, workspaceID uuid.UUID) (*model.AIAgent
 	return &a, nil
 }
 
+// WorkspaceAutoReplyNoLLMReason explica porque WorkspaceAutoReplyLLM devolveria (nil, nil) — útil para logs.
+// O carregamento real exige active=true, use_for_whatsapp_auto_reply=true e api_key_cipher preenchido.
+func WorkspaceAutoReplyNoLLMReason(db *gorm.DB, workspaceID uuid.UUID) string {
+	if db == nil || workspaceID == uuid.Nil {
+		return "workspace_id inválido"
+	}
+	var agents []model.AIAgent
+	if err := db.Where("workspace_id = ? AND use_for_whatsapp_auto_reply = ?", workspaceID, true).
+		Order("updated_at DESC").Find(&agents).Error; err != nil {
+		return "db: " + err.Error()
+	}
+	if len(agents) == 0 {
+		return "nenhum agente com use_for_whatsapp_auto_reply=true (marca no painel e grava)"
+	}
+	for _, a := range agents {
+		if !a.Active {
+			return "agente «" + a.Name + "» tem WhatsApp auto-resposta mas active=false — activa o agente"
+		}
+		if strings.TrimSpace(a.APIKeyCipher) == "" {
+			return "agente «" + a.Name + "» sem chave LLM gravada — cola a API key no agente e guarda (PATCH com api_key)"
+		}
+	}
+	return "agente(s) com WhatsApp marcado mas critérios de LLM não reunidos"
+}
+
 // ClearOtherWhatsAppAutoReplyAgents desmarca outros agentes do mesmo workspace (máx. um ativo).
 func ClearOtherWhatsAppAutoReplyAgents(db *gorm.DB, workspaceID uuid.UUID, exceptAgentID uuid.UUID) error {
 	q := db.Model(&model.AIAgent{}).Where("workspace_id = ? AND use_for_whatsapp_auto_reply = ?", workspaceID, true)

@@ -64,3 +64,65 @@ func TestClearOtherWhatsAppAutoReplyAgents_onlyOne(t *testing.T) {
 		t.Fatal("a2 devia permanecer marcado")
 	}
 }
+
+func TestWorkspaceAutoReplyNoLLMReason_noneMarked(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.AIAgent{}); err != nil {
+		t.Fatal(err)
+	}
+	ws := uuid.New()
+	r := WorkspaceAutoReplyNoLLMReason(db, ws)
+	if !strings.Contains(r, "use_for_whatsapp_auto_reply=true") {
+		t.Fatalf("unexpected: %q", r)
+	}
+}
+
+func TestWorkspaceAutoReplyNoLLMReason_inactive(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.AIAgent{}); err != nil {
+		t.Fatal(err)
+	}
+	ws := uuid.New()
+	a := model.AIAgent{
+		ID: uuid.New(), WorkspaceID: ws, Name: "Bot", Provider: "gemini", Model: "m",
+		APIKeyCipher: "x", Active: true, UseForWhatsAppAutoReply: true,
+	}
+	if err := db.Create(&a).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.AIAgent{}).Where("id = ?", a.ID).Update("active", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	r := WorkspaceAutoReplyNoLLMReason(db, ws)
+	if !strings.Contains(r, "active=false") {
+		t.Fatalf("unexpected: %q", r)
+	}
+}
+
+func TestWorkspaceAutoReplyNoLLMReason_noCipher(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(&model.AIAgent{}); err != nil {
+		t.Fatal(err)
+	}
+	ws := uuid.New()
+	a := model.AIAgent{
+		ID: uuid.New(), WorkspaceID: ws, Name: "Bot", Provider: "gemini", Model: "m",
+		APIKeyCipher: "", Active: true, UseForWhatsAppAutoReply: true,
+	}
+	if err := db.Create(&a).Error; err != nil {
+		t.Fatal(err)
+	}
+	r := WorkspaceAutoReplyNoLLMReason(db, ws)
+	if !strings.Contains(r, "sem chave LLM") {
+		t.Fatalf("unexpected: %q", r)
+	}
+}

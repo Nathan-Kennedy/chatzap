@@ -298,9 +298,20 @@ func HandleWhatsAppWebhook(d WebhookDeps) fiber.Handler {
 				}
 			}()
 		} else if d.Cfg.AutoReplyEnabled && llm == nil && ok && inbound.Text != "" && !inbound.FromMe && conversationID != uuid.Nil {
-			d.Log.Warn("auto-reply: sem LLM — inbox actualizada mas nenhuma resposta gerada. Defina GEMINI_API_KEY ou OPENAI_API_KEY no Coolify, ou guarde a API key no agente com «usar no WhatsApp» activo",
+			motivo := ""
+			switch {
+			case workspaceID == uuid.Nil:
+				motivo = "mensagem não associada a workspace (instância ou upsert)"
+			case strings.TrimSpace(d.Cfg.AppEncryptionKey) == "":
+				motivo = "APP_ENCRYPTION_KEY vazio — não dá para desencriptar a chave do agente"
+			default:
+				motivo = service.WorkspaceAutoReplyNoLLMReason(d.DB, workspaceID)
+			}
+			d.Log.Warn("auto-reply: sem LLM — inbox actualizada mas nenhuma resposta gerada (opcional: GEMINI/OPENAI no Coolify como fallback)",
 				zap.String("instance", instanceParam),
 				zap.String("conversation_id", conversationID.String()),
+				zap.String("workspace_id", workspaceID.String()),
+				zap.String("motivo", motivo),
 			)
 		}
 
