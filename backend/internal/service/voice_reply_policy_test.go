@@ -8,11 +8,15 @@ import (
 func TestPreferVoiceForAutoReply(t *testing.T) {
 	short := strings.Repeat("a", VoiceReplyShortMaxRunes-1)
 	if PreferVoiceForAutoReply(short) {
-		t.Fatal("curto demais devia ser só texto")
+		t.Fatal("curto casual demais devia ser só texto")
 	}
 	long := strings.Repeat("b", VoiceReplyShortMaxRunes)
 	if !PreferVoiceForAutoReply(long) {
 		t.Fatal("longo devia preferir voz")
+	}
+	operacional := "Podemos agendar a visita técnica para terça. O orçamento base é R$ 800."
+	if !PreferVoiceForAutoReply(operacional) {
+		t.Fatal("curto mas operacional devia preferir voz")
 	}
 }
 

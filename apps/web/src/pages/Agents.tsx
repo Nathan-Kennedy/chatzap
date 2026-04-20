@@ -818,10 +818,10 @@ export default function Agents() {
             <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
               <p className="text-sm font-medium text-text-primary">Resposta em voz (WhatsApp)</p>
               <p className="text-xs text-text-muted">
-                Respostas <strong className="font-medium text-text-primary">curtas</strong> vão em texto; as{' '}
-                <strong className="font-medium text-text-primary">mais longas</strong> usam nota de voz (TTS). Se a
-                resposta tiver dados para guardar (valores, datas, agendamento), após o áudio segue uma mensagem de
-                texto com o mesmo conteúdo. Requer <code className="text-[10px]">PUBLIC_MEDIA_BASE_URL</code>{' '}
+                Nota de voz (TTS) para respostas <strong className="font-medium text-text-primary">longas</strong> ou
+                com assunto operacional (orçamento, agendamento, valores, visita, prazos). Conversas muito curtas e
+                genéricas ficam em texto. Quando há dados para guardar, após o áudio pode seguir mensagem de texto com o
+                mesmo conteúdo. Requer <code className="text-[10px]">PUBLIC_MEDIA_BASE_URL</code>{' '}
                 acessível pela Evolution. Com Gemini TTS, etiquetas{' '}
                 <code className="text-[10px]">[PAUSA]</code>, <code className="text-[10px]">[HESITA]</code>,{' '}
                 <code className="text-[10px]">[GAGUEJA]</code> no texto do modelo são interpretadas para ritmo natural.
